@@ -18,7 +18,7 @@ sudo tar -C /usr/local -xzf ${GOTAR}
 rm -f ${GOTAR}
 echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
 
-mkdir -p /home/vagrant/go/src/github.com/yuuki/shawk/
+mkdir -p /home/vagrant/go/src/github.com/yuuki/gobpflib-conntracer/
 
 # Install docker
 curl -fsSL get.docker.com -o get-docker.sh
