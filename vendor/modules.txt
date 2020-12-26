@@ -1,0 +1,9 @@
+# github.com/cilium/ebpf v0.3.0
+## explicit
+github.com/cilium/ebpf
+github.com/cilium/ebpf/asm
+github.com/cilium/ebpf/internal
+github.com/cilium/ebpf/internal/btf
+github.com/cilium/ebpf/internal/unix
+# golang.org/x/sys v0.0.0-20200124204421-9fbb57f87de9
+golang.org/x/sys/unix
