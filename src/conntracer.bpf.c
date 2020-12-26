@@ -27,10 +27,9 @@ int BPF_KPROBE(tcp_v4_connect, struct sock *sk)
 	__u32 tid = pid_tgid;
 	__u32 uid;
 
-	bpf_map_update_elem(&sockets, &pid, &sk, 0);
+	bpf_printk("pid: %d, uid: %d\n", pid, uid);
 
-	char fmt[] = "pid %d\n";
-	bpf_trace_printk(fmt, sizeof(fmt), &pid);
+	bpf_map_update_elem(&sockets, &pid, &sk, 0);
 
 	return 0;
 }
