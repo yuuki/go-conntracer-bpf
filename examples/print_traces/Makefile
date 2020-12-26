@@ -1,4 +1,4 @@
-GOOS = linux
+export GOOS=linux
 
 all: build
 
