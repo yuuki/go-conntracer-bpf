@@ -1,19 +1,18 @@
+//go:generate go-bindata -prefix "../../src/.output" -pkg main -modtime 1 -o "./print_tracer.bindata.go" "../../src/.output/conntracer.bpf.o"
+
 package main
 
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
 
 	"github.com/cilium/ebpf"
 )
 
-const BPF_ELF_FILE = "src/.output/conntracer.bpf.o"
-
 func main() {
-	elf, err := ioutil.ReadFile(BPF_ELF_FILE)
+	elf, err := Asset("conntracer.bpf.o")	
 	if err != nil {
-		panic("Error reading BPF program:" + err.Error())
+		panic("Error load ELF object")
 	}
 
 	spec, err := ebpf.LoadCollectionSpecFromReader(bytes.NewReader(elf))
