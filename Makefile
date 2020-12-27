@@ -1,5 +1,8 @@
-DOCKER_IMAGE_NAME = yuuki/gobpflib-conntracer
+export GOOS=linux
 
-.PHONY: docker/build
-docker/build:
-	docker build -t $(DOCKER_IMAGE_NAME) .
+all: build
+
+.PHONY: build
+build:
+	go generate ./...
+	go build -mod vendor -o print_traces ./examples/print_traces/...

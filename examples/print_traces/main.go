@@ -32,7 +32,7 @@ func main() {
 		panic(err)
 	}
 
-	elf, err := Asset("conntracer.bpf.o")	
+	obj, err := Asset("conntracer.bpf.o")	
 	if err != nil {
 		panic("Error load ELF object")
 	}
