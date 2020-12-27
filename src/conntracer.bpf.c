@@ -19,8 +19,8 @@ struct {
 	__uint(map_flags, BPF_F_NO_PREALLOC);
 } sockets SEC(".maps");
 
-SEC("kprobe/tcp_v4_connect")
-int BPF_KPROBE(tcp_v4_connect, struct sock *sk)
+static __always_inline int
+enter_tcp_connect(struct pt_regs *ctx, struct sock *sk)
 {
 	__u64 pid_tgid = bpf_get_current_pid_tgid();
 	__u32 pid = pid_tgid >> 32;
@@ -32,4 +32,10 @@ int BPF_KPROBE(tcp_v4_connect, struct sock *sk)
 	bpf_map_update_elem(&sockets, &pid, &sk, 0);
 
 	return 0;
+}
+
+SEC("kprobe/tcp_v4_connect")
+int BPF_KPROBE(tcp_v4_connect, struct sock *sk)
+{
+	return enter_tcp_connect(ctx, sk);
 }
