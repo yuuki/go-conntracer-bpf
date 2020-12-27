@@ -37,7 +37,7 @@ func main() {
 		panic("Error load ELF object")
 	}
 
-	spec, err := ebpf.LoadCollectionSpecFromReader(bytes.NewReader(elf))
+	spec, err := ebpf.LoadCollectionSpecFromReader(bytes.NewReader(obj))
 	if err != nil {
 		panic(err)
 	}
