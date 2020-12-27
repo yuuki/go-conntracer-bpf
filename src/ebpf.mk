@@ -9,7 +9,7 @@ INCLUDES := -I$(OUTPUT)
 CFLAGS := -g -Wall
 ARCH := $(shell uname -m | sed 's/x86_64/x86/')
 
-APPS = bootstrap conntracer
+APPS = bootstrap conntracer tcpconnect
 
 # Get Clang's default includes on this system. We'll explicitly add these dirs
 # to the includes list when compiling with `-target bpf` because otherwise some
@@ -53,6 +53,7 @@ $(LIBBPF_OBJ): $(wildcard $(LIBBPF_SRC)/*.[ch] $(LIBBPF_SRC)/Makefile) | $(OUTPU
 			OBJDIR=$(dir $@)/libbpf DESTDIR=$(dir $@)		      \
 			INCLUDEDIR= LIBDIR= UAPIDIR=			      \
 			install
+	ranlib $@
 
 # Build BPF code
 $(OUTPUT)/%.bpf.o: %.bpf.c $(LIBBPF_OBJ) $(wildcard %.h) vmlinux.h | $(OUTPUT)

@@ -1,17 +1,21 @@
-//go:generate go-bindata -prefix "../../src/.output" -pkg main -modtime 1 -o "./print_tracer.bindata.go" "../../src/.output/conntracer.bpf.o"
-
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"math"
 	"time"
+	"unsafe"
 
 	"golang.org/x/sys/unix"
-
-	"github.com/cilium/ebpf"
 )
+
+/*
+#cgo CFLAGS: -I ../../src/.output
+#cgo LDFLAGS: -L../../src/.output/libbpf -l:libbpf.a -lelf -lz -Wl,-rpath=../../src/.output/libbpf
+#include <bpf/libbpf.h>
+#include "conntracer.skel.h"
+*/
+import "C"
 
 func bumpMemlockRlimit() error {
 	rl := unix.Rlimit{
@@ -25,36 +29,22 @@ func bumpMemlockRlimit() error {
 	return nil
 }
 
-
 func main() {
 	/* Bump RLIMIT_MEMLOCK to allow BPF sub-system to do anything */
 	if err := bumpMemlockRlimit(); err != nil {
 		panic(err)
 	}
 
-	obj, err := Asset("conntracer.bpf.o")	
-	if err != nil {
-		panic("Error load ELF object")
+	obj := C.conntracer_bpf__open_and_load()
+	if obj == nil {
+		panic("failed to open and load BPF object\n")
 	}
+	defer C.free(unsafe.Pointer(obj))
 
-	spec, err := ebpf.LoadCollectionSpecFromReader(bytes.NewReader(obj))
-	if err != nil {
-		panic(err)
+	cerr := C.conntracer_bpf__attach(obj)
+	if cerr != 0 {
+		panic(fmt.Sprintf("failed to attach BPF programs: %s\n", C.strerror(-cerr)))
 	}
-
-	coll, err := ebpf.NewCollection(spec)
-	if err != nil {
-		panic(err)
-	}
-
-	prog := coll.DetachProgram("tcp_v4_connect")
-	if prog == nil {
-		panic("no program named tcp_v4_connect found")
-	}
-	defer prog.Close()
-
-	pinfo, _ := prog.Info()
-	fmt.Printf("Program info: %+v\n", pinfo)
 
 	for {
 		fmt.Println("Waiting...")
