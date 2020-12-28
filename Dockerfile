@@ -1,4 +1,4 @@
 FROM golang:1.15.5
 
-ENV PKG github.com/yuuki/gobpflib-conntracer
+ENV PKG github.com/yuuki/golib-conntracer
 WORKDIR /go/src/$PKG
