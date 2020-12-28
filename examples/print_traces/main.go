@@ -10,8 +10,8 @@ import (
 )
 
 /*
-#cgo CFLAGS: -I ../../src/.output -I ../../src
-#cgo LDFLAGS: -L../../src/.output/libbpf -l:libbpf.a -lelf -lz -Wl,-rpath=../../src/.output/libbpf
+#cgo CFLAGS: -I ../../
+#cgo LDFLAGS: -L../../ -l:libbpf.a -lelf -lz -Wl,-rpath=../../
 #include <sys/resource.h>
 #include <arpa/inet.h>
 #include <errno.h>
