@@ -20,4 +20,4 @@ tidy:
 
 .PHONY: bpf/build
 bpf/build:
-	make -C src
+	make -C bpf
