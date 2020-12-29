@@ -15,3 +15,7 @@ build:
 tidy:
 	go mod tidy
 	go mod vendor
+
+.PHONY: bpf/build
+bpf/build:
+	make -C src
