@@ -62,10 +62,8 @@ insert_flows(pid_t pid, __u32 uid, struct sock *sk, __u16 dport)
 	struct flow_stat stat = {};
 	struct ipv4_flow_key flow_key = {};
 
-	BPF_CORE_READ_INTO(&flow.saddr, sk,
-						   __sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
-	BPF_CORE_READ_INTO(&flow.daddr, sk,
-			   __sk_common.skc_v6_daddr.in6_u.u6_addr32);
+	BPF_CORE_READ_INTO(&flow.saddr, sk, __sk_common.skc_rcv_saddr);
+	BPF_CORE_READ_INTO(&flow.daddr, sk, __sk_common.skc_daddr);
 	flow.dport = dport;
 	flow.direction = FLOW_ACTIVE;
 	bpf_get_current_comm(flow.task, sizeof(flow.task));
