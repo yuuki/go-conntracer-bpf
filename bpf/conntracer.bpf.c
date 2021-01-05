@@ -31,8 +31,8 @@ struct {
 
 struct {
 	__uint(type, BPF_MAP_TYPE_HASH);
-	__type(key, struct flow);
-	__type(value, struct flow_stat);
+	__type(key, struct ipv4_flow_key);
+	__type(value, struct flow);
 	__uint(max_entries, MAX_FLOW_ENTRIES);
 	__uint(map_flags, BPF_F_NO_PREALLOC);
 } flows SEC(".maps");
@@ -78,7 +78,7 @@ insert_flows(pid_t pid, __u32 uid, struct sock *sk, __u16 dport)
 	flow_key.daddr = flow.daddr;
 	flow_key.dport = flow.dport;
 
-	bpf_map_update_elem(&flows, &flow_key, &flow, 0);
+	bpf_map_update_elem(&flows, &flow_key, &flow, BPF_ANY);
 }
 
 static __always_inline int
