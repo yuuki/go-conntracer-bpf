@@ -1,8 +1,11 @@
 package main
 
 import (
+	"encoding/binary"
 	"fmt"
+	"log"
 	"math"
+	"net"
 	"syscall"
 	"time"
 	"unsafe"
@@ -64,6 +67,28 @@ int err;
 */
 import "C"
 
+type flow struct {
+	SAddr       *net.IP
+	DAddr       *net.IP
+	ProcessName string
+	DPort       uint16
+	Direction   uint8 // 1: "connect"(active), 2: "accept"(passive)
+	Stat        *flowStat
+}
+
+type flowStat struct {
+	UID uint32
+	PID uint32
+}
+
+func ntohs(i uint16) uint16 {
+	return binary.BigEndian.Uint16((*(*[2]byte)(unsafe.Pointer(&i)))[:])
+}
+
+func inetNtop(i uint16) net.IP {
+	return net.IP((*(*[net.IPv4len]byte)(unsafe.Pointer(&i)))[:])
+}
+
 func bumpMemlockRlimit() error {
 	rl := unix.Rlimit{
 		Cur: math.MaxUint64,
@@ -83,19 +108,18 @@ func pollFlows(interval time.Duration, fd C.int) {
 	for {
 		select {
 		case <-t.C:
-			scanFlows(fd)
-			// flows, err := scanFlows(fd)
-			// if err != nil {
-			// 	log.Println(err)
-			// }
-			// for _, flow := range flows {
-			// 	fmt.Println(flow)
-			// }
+			flows, err := scanFlows(fd)
+			if err != nil {
+				log.Println(err)
+			}
+			for _, flow := range flows {
+				fmt.Printf("%+v\n", flow)
+			}
 		}
 	}
 }
 
-func scanFlows(fd C.int) {
+func scanFlows(fd C.int) ([]*flow, error) {
 	// LIBBPF_API int bpf_map_lookup_and_delete_batch(int fd, void *in_batch,
 	// 			void *out_batch, void *keys,
 	// 			void *values, __u32 *count,
@@ -114,23 +138,44 @@ func scanFlows(fd C.int) {
 
 	var (
 		batchSize C.uint = 10
-		n, nRead  C.uint = 0, 0
+		n         C.uint = 0
+		nRead     int    = 0
 		ret       C.int  = 0
-		err       error
+		cerr      error
 	)
 	for ret == 0 {
 		n = batchSize
-		ret, err = C.bpf_map_lookup_and_delete_batch(fd, pKey, pNextKey, ckeys, cvalues, &n, opts)
-		if ret != 0 && err != syscall.Errno(syscall.ENOENT) {
-			fmt.Printf("Error bpf_map_lookup_and_delete_batch: fd:%d, %d, %+v, %v\n", fd, ret, err)
-			return //TODO: return err
+		// TODO: ckeys, cvalues pointer increment
+		ret, cerr = C.bpf_map_lookup_and_delete_batch(fd, pKey, pNextKey, ckeys, cvalues, &n, opts)
+		if ret != 0 && cerr != syscall.Errno(syscall.ENOENT) {
+			return nil, fmt.Errorf("Error bpf_map_lookup_and_delete_batch: fd:%d, %d, %+v, %v", fd, ret, cerr)
 		}
-		nRead += n
+		nRead += (int)(n)
 		pKey = pNextKey // TODO: test
 	}
+
 	fmt.Printf("nRead: %d\n", nRead)
 	fmt.Printf("%+v, %+v\n", keys[0], values[0])
-	return
+
+	flows := make([]*flow, 0, nRead)
+	for i := 0; i < nRead; i++ {
+		saddr := inetNtop((uint16)(values[i].saddr))
+		daddr := inetNtop((uint16)(values[i].daddr))
+		flow := &flow{
+			SAddr:       &saddr,
+			DAddr:       &daddr,
+			ProcessName: C.GoString((*C.char)(unsafe.Pointer(&values[i].task))),
+			DPort:       ntohs((uint16)(values[i].dport)),
+			Direction:   uint8(values[i].direction),
+			Stat: &flowStat{
+				UID: (uint32)(values[i].stat.uid),
+				PID: (uint32)(values[i].stat.pid),
+			},
+		}
+		flows = append(flows, flow)
+	}
+
+	return flows, nil
 }
 
 func printEvents(perf_map_fd C.int) {
