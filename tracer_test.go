@@ -27,6 +27,14 @@ func TestStart(t *testing.T) {
 	}
 	tracer, _ := NewTracer(cb)
 	tracer.Start(defaultInterval)
-	time.Sleep(500 * time.Millisecond)
 	tracer.Stop()
+}
+
+func TestClose(t *testing.T) {
+	cb := func(flows []*Flow) error {
+		assert.Empty(t, flows, "flows should be empty")
+		return nil
+	}
+	tracer, _ := NewTracer(cb)
+	tracer.Close()
 }
