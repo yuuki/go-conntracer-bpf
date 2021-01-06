@@ -27,6 +27,6 @@ func TestStart(t *testing.T) {
 	}
 	tracer, _ := NewTracer(cb)
 	tracer.Start(defaultInterval)
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(500 * time.Millisecond)
 	tracer.Stop()
 }
