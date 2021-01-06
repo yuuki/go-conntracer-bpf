@@ -44,11 +44,12 @@ type FlowStat struct {
 
 type Tracer struct {
 	obj *C.struct_conntracer_bpf
+	cb          func([]*Flow) error
 	stopChan    chan struct{}
 }
 
 // NewTracer creates a Tracer object.
-func NewTracer(cb func([]*Flow) error, interval time.Duration) (*Tracer, error) {
+func NewTracer(cb func([]*Flow) error) (*Tracer, error) {
 	// Bump RLIMIT_MEMLOCK to allow BPF sub-system to do anything
 	if err := bumpMemlockRlimit(); err != nil {
 		return nil, err
@@ -58,7 +59,7 @@ func NewTracer(cb func([]*Flow) error, interval time.Duration) (*Tracer, error) 
 	if obj == nil {
 		return nil, fmt.Errorf("failed to open and load BPF object\n")
 	}
-	defer C.free(unsafe.Pointer(obj))
+	// defer C.free(unsafe.Pointer(obj))
 
 	cerr := C.conntracer_bpf__attach(obj)
 	if cerr != 0 {
@@ -66,9 +67,13 @@ func NewTracer(cb func([]*Flow) error, interval time.Duration) (*Tracer, error) 
 	}
 
 	stopChan := make(chan struct{})
-	go pollFlows(interval, cb, C.bpf_map__fd(obj.maps.flows), stopChan)
 
-	return &Tracer{obj: obj, stopChan: stopChan}, nil
+	return &Tracer{obj: obj, cb: cb, stopChan: stopChan}, nil
+}
+
+// Start starts polling loop.
+func (t *Tracer) Start(interval time.Duration) {
+	go t.pollFlows(interval)
 }
 
 // Stop stops polling loop.
@@ -76,22 +81,22 @@ func (t *Tracer) Stop() {
 	close(t.stopChan)
 }
 
-func pollFlows(interval time.Duration, cb func([]*Flow) error, fd C.int, stopChan chan struct{}) {
-	t := time.NewTicker(interval)
+func (t *Tracer) pollFlows(interval time.Duration) {
+	tick := time.NewTicker(interval)
 	defer t.Stop()
 
 	for {
 		select {
-		case <-stopChan:
+		case <-t.stopChan:
 			// stop gracefully
 			time.Sleep(interval)
 			return
-		case <-t.C:
-			flows, err := dumpFlows(fd)
+		case <-tick.C:
+			flows, err := dumpFlows(C.bpf_map__fd(t.obj.maps.flows))
 			if err != nil {
 				log.Println(err)
 			}
-			if err := cb(flows); err != nil {
+			if err := t.cb(flows); err != nil {
 				log.Println(err)
 			}
 		}
