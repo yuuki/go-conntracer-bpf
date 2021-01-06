@@ -7,7 +7,7 @@ LIBBPF_SRC := $(abspath ../libbpf/src)
 LIBBPF_OBJ := $(abspath $(OUTPUT)/libbpf.a)
 SHARED_OUTPUT := $(abspath ../)
 INCLUDES_DIR := $(abspath ../includes)
-INCLUDES := -I$(OUTPUT) -I$(SHARED_OUTPUT)
+INCLUDES := -I$(OUTPUT) -I$(INCLUDES_DIR)
 CFLAGS := -g -Wall
 ARCH := $(shell uname -m | sed 's/x86_64/x86/')
 
