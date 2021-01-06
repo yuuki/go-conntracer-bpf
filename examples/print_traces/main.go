@@ -4,19 +4,21 @@ import (
 	"fmt"
 	"math"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/unix"
 )
 
 /*
-#cgo CFLAGS: -I ../../
+#cgo CFLAGS: -I ../../ -I../../includes
 #cgo LDFLAGS: -L../../ -l:libbpf.a -lelf -lz -Wl,-rpath=../../
 #include <sys/resource.h>
 #include <arpa/inet.h>
 #include <errno.h>
 
 #include <bpf/libbpf.h>
+#include <bpf/bpf.h>
 #include "conntracer.skel.h"
 #include "conntracer.h"
 
@@ -74,6 +76,63 @@ func bumpMemlockRlimit() error {
 	return nil
 }
 
+func pollFlows(interval time.Duration, fd C.int) {
+	t := time.NewTicker(interval)
+	defer t.Stop()
+
+	for {
+		select {
+		case <-t.C:
+			scanFlows(fd)
+			// flows, err := scanFlows(fd)
+			// if err != nil {
+			// 	log.Println(err)
+			// }
+			// for _, flow := range flows {
+			// 	fmt.Println(flow)
+			// }
+		}
+	}
+}
+
+func scanFlows(fd C.int) {
+	// LIBBPF_API int bpf_map_lookup_and_delete_batch(int fd, void *in_batch,
+	// 			void *out_batch, void *keys,
+	// 			void *values, __u32 *count,
+	// 			const struct bpf_map_batch_opts *opts);
+	pKey := C.NULL
+	pNextKey := unsafe.Pointer(&C.struct_ipv4_flow_key{})
+	keys := make([]C.struct_ipv4_flow_key, C.MAX_ENTRIES)
+	ckeys := unsafe.Pointer(&keys[0])
+	values := make([]C.struct_flow, C.MAX_ENTRIES)
+	cvalues := unsafe.Pointer(&values[0])
+	opts := &C.struct_bpf_map_batch_opts{
+		elem_flags: 0,
+		flags:      0,
+		sz:         C.sizeof_struct_bpf_map_batch_opts,
+	}
+
+	var (
+		batchSize C.uint = 10
+		n, nRead  C.uint = 0, 0
+		ret       C.int  = 0
+		err       error
+	)
+	for ret == 0 {
+		n = batchSize
+		ret, err = C.bpf_map_lookup_and_delete_batch(fd, pKey, pNextKey, ckeys, cvalues, &n, opts)
+		if ret != 0 && err != syscall.Errno(syscall.ENOENT) {
+			fmt.Printf("Error bpf_map_lookup_and_delete_batch: fd:%d, %d, %+v, %v\n", fd, ret, err)
+			return //TODO: return err
+		}
+		nRead += n
+		pKey = pNextKey // TODO: test
+	}
+	fmt.Printf("nRead: %d\n", nRead)
+	fmt.Printf("%+v, %+v\n", keys[0], values[0])
+	return
+}
+
 func printEvents(perf_map_fd C.int) {
 	pb := C.perf_buffer__new(perf_map_fd, 128, &C.pb_opts)
 	defer C.perf_buffer__free(pb)
@@ -111,5 +170,6 @@ func main() {
 		panic(fmt.Sprintf("failed to attach BPF programs: %s\n", C.strerror(-cerr)))
 	}
 
+	go pollFlows(3*time.Second, C.bpf_map__fd(obj.maps.flows))
 	printEvents(C.bpf_map__fd(obj.maps.events))
 }
