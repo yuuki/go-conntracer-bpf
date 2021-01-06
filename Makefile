@@ -3,12 +3,18 @@ export GOARCH=amd64
 export CGO_ENABLED=1
 export GODEBUG=cgocheck=2
 
-BIN := ./bin
+BIN := $(abspath ./bin)
+GO := $(shell which go)
+SUDO := sudo -E
 
-all: build
+all: bpf/build examples/build 
 
-.PHONY: build
-build:
+.PHONY: test
+test:
+	$(SUDO) $(GO) test -v .
+
+.PHONY: examples/build
+examples/build:
 	go generate ./...
 	go build -mod vendor -o $(BIN)/print_traces ./examples/print_traces/...
 
