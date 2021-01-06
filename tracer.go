@@ -118,8 +118,8 @@ func dumpFlows(fd C.int) ([]*Flow, error) {
 
 	flows := make([]*Flow, 0, nRead)
 	for i := 0; i < nRead; i++ {
-		saddr := inetNtop((uint16)(values[i].saddr))
-		daddr := inetNtop((uint16)(values[i].daddr))
+		saddr := inetNtop((uint32)(values[i].saddr))
+		daddr := inetNtop((uint32)(values[i].daddr))
 		flow := &Flow{
 			SAddr:       &saddr,
 			DAddr:       &daddr,

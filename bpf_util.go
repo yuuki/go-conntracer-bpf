@@ -25,6 +25,6 @@ func ntohs(i uint16) uint16 {
 	return binary.BigEndian.Uint16((*(*[2]byte)(unsafe.Pointer(&i)))[:])
 }
 
-func inetNtop(i uint16) net.IP {
+func inetNtop(i uint32) net.IP {
 	return net.IP((*(*[net.IPv4len]byte)(unsafe.Pointer(&i)))[:])
 }
