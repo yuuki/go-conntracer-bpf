@@ -80,8 +80,8 @@ func pollFlows(interval time.Duration, cb func([]*Flow) error, fd C.int) {
 			if err != nil {
 				log.Println(err)
 			}
-			for _, flow := range flows {
-				fmt.Printf("%+v\n", flow)
+			if err := cb(flows); err != nil {
+				log.Println(err)
 			}
 		}
 	}
