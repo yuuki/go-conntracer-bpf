@@ -9,6 +9,7 @@ import (
 	"unsafe"
 
 	// Put the C header files into Go module management
+	_ "github.com/yuuki/gobpf-conntracer/includes"
 	_ "github.com/yuuki/gobpf-conntracer/includes/bpf"
 )
 
