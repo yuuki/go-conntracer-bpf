@@ -16,6 +16,7 @@ var interval time.Duration
 
 func init() {
 	flag.DurationVar(&interval, "interval", 3*time.Second, "polling interval (default 3s)")
+	flag.Parse()
 }
 
 func printFlows(flows []*conntracer.Flow) error {
@@ -35,7 +36,7 @@ func main() {
 
 	sigch := make(chan os.Signal, 1)
 	signal.Notify(sigch, syscall.SIGTERM, syscall.SIGINT)
-	log.Println("Waiting for collecting flows...")
+	log.Printf("Waiting interval %s for flows to be collected...\n", interval)
 	sig := <-sigch
 	log.Println("Received %s, Goodbye", sig)
 }
