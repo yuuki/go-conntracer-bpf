@@ -89,6 +89,7 @@ func (t *Tracer) pollFlows(interval time.Duration) {
 		select {
 		case <-t.stopChan:
 			// stop gracefully
+			t.Stop()
 			time.Sleep(interval)
 			return
 		case <-tick.C:
