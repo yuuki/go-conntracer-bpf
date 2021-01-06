@@ -24,36 +24,12 @@ struct {
 } sockets SEC(".maps");
 
 struct {
-	__uint(type, BPF_MAP_TYPE_PERF_EVENT_ARRAY);
-	__uint(key_size, sizeof(u32));
-	__uint(value_size, sizeof(u32));
-} events SEC(".maps");
-
-struct {
 	__uint(type, BPF_MAP_TYPE_HASH);
 	__type(key, struct ipv4_flow_key);
 	__type(value, struct flow);
 	__uint(max_entries, MAX_FLOW_ENTRIES);
 	__uint(map_flags, BPF_F_NO_PREALLOC);
 } flows SEC(".maps");
-
-static __always_inline void
-trace_v4(struct pt_regs *ctx, pid_t pid, struct sock *sk, __u16 dport)
-{
-	struct event event = {};
-
-	event.af = AF_INET;
-	event.pid = pid;
-	event.uid = bpf_get_current_uid_gid();
-	event.ts_us = bpf_ktime_get_ns() / 1000;
-	BPF_CORE_READ_INTO(&event.saddr_v4, sk, __sk_common.skc_rcv_saddr);
-	BPF_CORE_READ_INTO(&event.daddr_v4, sk, __sk_common.skc_daddr);
-	event.dport = dport;
-	bpf_get_current_comm(event.task, sizeof(event.task));
-
-	bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU,
-			      &event, sizeof(event));
-}
 
 static __always_inline void
 insert_flows(pid_t pid, __u32 uid, struct sock *sk, __u16 dport)
@@ -115,8 +91,6 @@ exit_tcp_connect(struct pt_regs *ctx, int ret)
 	sk = *skpp;
 
 	BPF_CORE_READ_INTO(&dport, sk, __sk_common.skc_dport);
-
-	trace_v4(ctx, pid, sk, dport);
 
 	insert_flows(pid, uid, sk, dport);
 
