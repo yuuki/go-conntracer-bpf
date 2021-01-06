@@ -89,7 +89,7 @@ enter_tcp_connect(struct pt_regs *ctx, struct sock *sk)
 
 	bpf_printk("enter_tcp_connect, pid: %d, uid: %d\n", pid, uid);
 
-	bpf_map_update_elem(&sockets, &pid, &sk, 0);
+	bpf_map_update_elem(&sockets, &pid, &sk, BPF_ANY);
 
 	return 0;
 }
