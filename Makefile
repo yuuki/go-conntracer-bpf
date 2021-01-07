@@ -7,6 +7,7 @@ BIN := $(abspath ./bin)
 GO := $(shell which go)
 SUDO := sudo -E
 
+.PHONY: all
 all: bpf/build examples/build 
 
 .PHONY: test
@@ -15,7 +16,6 @@ test:
 
 .PHONY: examples/build
 examples/build:
-	go generate ./...
 	go build -mod vendor -o $(BIN)/print_traces ./examples/print_traces/...
 
 .PHONY: tidy
@@ -26,3 +26,6 @@ tidy:
 .PHONY: bpf/build
 bpf/build:
 	make -C bpf
+
+.PHONY: clean
+	go clean -x -cache -testcache
