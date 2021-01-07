@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	conntracer "github.com/yuuki/gobpf-conntracer"
+	conntracer "github.com/yuuki/go-conntracer-bpf"
 )
 
 var interval time.Duration

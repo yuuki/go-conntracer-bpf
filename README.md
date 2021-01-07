@@ -1,4 +1,4 @@
-# gobpf-conntracer
+# go-conntracer-bpf
 
-gobpf-conntracer is a Go library using kprobes to trace network connection (TCP) events (connect, accept, close) inspired by [weaveworks/tcptracer-bpf](https://github.com/weaveworks/tcptracer-bpf).
-gobpf-conntracer optimizes performance for tracing by aggregating connections events in kernel.
+go-conntracer-bpf is a Go library using kprobes to trace network connection (TCP) events (connect, accept, close) inspired by [weaveworks/tcptracer-bpf](https://github.com/weaveworks/tcptracer-bpf).
+go-conntracer-bpf realizes low-overhead tracing by aggregating connections events in kernel.

@@ -1,4 +1,4 @@
-module github.com/yuuki/gobpf-conntracer
+module github.com/yuuki/go-conntracer-bpf
 
 go 1.15
 
