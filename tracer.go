@@ -85,7 +85,7 @@ func NewTracer(cb func([]*Flow) error) (*Tracer, error) {
 // Close closes tracer.
 func (t *Tracer) Close() {
 	t.Stop()
-	C.free(unsafe.Pointer(t.obj))
+	C.conntracer_bpf__destroy(t.obj)
 }
 
 // Start starts polling loop.
