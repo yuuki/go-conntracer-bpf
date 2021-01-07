@@ -101,13 +101,16 @@ end:
 }
 
 static __always_inline int
-enter_tcp_accept(struct pt_regs *ctx, struct sock *sk)
+exit_tcp_accept(struct pt_regs *ctx, struct sock *sk)
 {
 	__u64 pid_tgid = bpf_get_current_pid_tgid();
 	__u32 pid = pid_tgid >> 32;
 	__u32 tid = pid_tgid;
 	__u32 uid = bpf_get_current_uid_gid();
 	__u16 dport;
+
+	if (!sk)
+		return 0;
 
 	BPF_CORE_READ_INTO(&dport, sk, __sk_common.skc_dport);
 
@@ -128,8 +131,8 @@ int BPF_KRETPROBE(tcp_v4_connect_ret, int ret)
 	return exit_tcp_connect(ctx, ret);
 }
 
-SEC("kprobe/inet_csk_accept")
-int BPF_KPROBE(inet_csk_accept, struct sock *sk)
+SEC("kretprobe/inet_csk_accept")
+int BPF_KRETPROBE(inet_csk_accept_ret, struct sock *sk)
 {
-	return enter_tcp_accept(ctx, sk);
+	return exit_tcp_accept(ctx, sk);
 }
