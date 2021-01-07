@@ -29,7 +29,8 @@ func printFlows(flows []*conntracer.Flow) error {
 func main() {
 	t, err := conntracer.NewTracer(printFlows)
 	if err != nil {
-		panic(err)
+		log.Println(err)
+		os.Exit(-1)
 	}
 	defer t.Close()
 	t.Start(interval)
@@ -38,5 +39,5 @@ func main() {
 	signal.Notify(sigch, syscall.SIGTERM, syscall.SIGINT)
 	log.Printf("Waiting interval %s for flows to be collected...\n", interval)
 	sig := <-sigch
-	log.Println("Received %s, Goodbye", sig)
+	log.Printf("Received %s, Goodbye\n", sig)
 }
