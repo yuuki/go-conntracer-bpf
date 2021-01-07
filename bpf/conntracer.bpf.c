@@ -11,9 +11,18 @@
 
 char LICENSE[] SEC("license") = "Dual BSD/GPL";
 
-/* Define here, because there are conflicts with include files */
-#define AF_INET		2
-#define AF_INET6	10
+/* Helper to output debug logs to /sys/kernel/debug/tracing/trace_pipe
+ */
+#if DEBUG == 1
+#define log_debug(fmt, ...)                                        \
+    ({                                                             \
+        char ____fmt[] = fmt;                                      \
+        bpf_trace_printk(____fmt, sizeof(____fmt), ##__VA_ARGS__); \
+    })
+#else
+// No op
+#define log_debug(fmt, ...)
+#endif
 
 struct {
 	__uint(type, BPF_MAP_TYPE_HASH);
@@ -62,12 +71,10 @@ enter_tcp_connect(struct pt_regs *ctx, struct sock *sk)
 	__u64 pid_tgid = bpf_get_current_pid_tgid();
 	__u32 pid = pid_tgid >> 32;
 	__u32 tid = pid_tgid;
-	__u32 uid;
-
-	bpf_printk("enter_tcp_connect, pid: %d, uid: %d\n", pid, uid);
 
 	bpf_map_update_elem(&sockets, &pid, &sk, BPF_ANY);
 
+	log_debug("kprobe/tcp_v4_connect: pid_tgid:%d\n", pid_tgid);
 	return 0;
 }
 
@@ -78,18 +85,16 @@ exit_tcp_connect(struct pt_regs *ctx, int ret)
 	__u32 pid = pid_tgid >> 32;
 	__u32 tid = pid_tgid;
 	__u32 uid = bpf_get_current_uid_gid();
-	struct sock **skpp;
-	struct sock *sk;
-	__u16 dport;
+	__u16 dport = 0;
 
-	skpp = bpf_map_lookup_elem(&sockets, &tid);
+	struct sock** skpp = bpf_map_lookup_elem(&sockets, &tid);
 	if (!skpp)
 		return 0;
 
 	if (ret)
 		goto end;
 
-	sk = *skpp;
+	struct sock* sk = *skpp;
 
 	BPF_CORE_READ_INTO(&dport, sk, __sk_common.skc_dport);
 
@@ -97,6 +102,7 @@ exit_tcp_connect(struct pt_regs *ctx, int ret)
 
 end:
 	bpf_map_delete_elem(&sockets, &tid);
+	log_debug("kretprobe/tcp_v4_connect: pid_tgid:%d, uid:%d, dport:%d\n", pid_tgid, uid, dport);
 	return 0;
 }
 
@@ -105,17 +111,16 @@ exit_tcp_accept(struct pt_regs *ctx, struct sock *sk)
 {
 	__u64 pid_tgid = bpf_get_current_pid_tgid();
 	__u32 pid = pid_tgid >> 32;
-	__u32 tid = pid_tgid;
-	__u32 uid = bpf_get_current_uid_gid();
-	__u16 dport;
+	__u16 dport = 0;
 
 	if (!sk)
 		return 0;
 
 	BPF_CORE_READ_INTO(&dport, sk, __sk_common.skc_dport);
 
-	insert_flows(pid, uid, sk, dport, FLOW_PASSIVE);
+	insert_flows(pid, 0, sk, dport, FLOW_PASSIVE); // TODO: handling uid
 
+	log_debug("kretprobe/inet_csk_accept: pid_tgid:%d, dport:%d\n", pid_tgid, dport);
 	return 0;
 }
 
