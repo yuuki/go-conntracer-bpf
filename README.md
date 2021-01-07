@@ -19,6 +19,10 @@ go-conntracer-bpf is a library for Go for tracing network connection (TCP) event
 
 - Linux kernel to be built with BTF type information. See <https://github.com/libbpf/libbpf#bpf-co-re-compile-once--run-everywhere>.
 
+## Usage
+
+- [godoc](https://godoc.org/github.com/yuuki/go-conntracer-bpf)
+
 ## Projects using go-conntracer-bpf
 
 - [yuuki/shawk](https://github.com/yuuki/shawk)
