@@ -28,12 +28,24 @@ import (
 */
 import "C"
 
+// FlowDirection are bitmask that represents both Active or Passive.
+type FlowDirection uint8
+
+const (
+	// FlowUnknown are unknown flow.
+	FlowUnknown FlowDirection = 1 << iota
+	// FlowActive are 'active open'.
+	FlowActive
+	// FlowPassive are 'passive open'
+	FlowPassive
+)
+
 type Flow struct {
 	SAddr       *net.IP
 	DAddr       *net.IP
 	ProcessName string
 	DPort       uint16
-	Direction   uint8 // 1: "connect"(active), 2: "accept"(passive)
+	Direction   FlowDirection
 	Stat        *FlowStat
 }
 
@@ -144,7 +156,7 @@ func dumpFlows(fd C.int) ([]*Flow, error) {
 			DAddr:       &daddr,
 			ProcessName: C.GoString((*C.char)(unsafe.Pointer(&values[i].task))),
 			DPort:       ntohs((uint16)(values[i].dport)),
-			Direction:   uint8(values[i].direction),
+			Direction:   FlowDirection((uint8)(values[i].direction)),
 			Stat: &FlowStat{
 				UID: (uint32)(values[i].stat.uid),
 				PID: (uint32)(values[i].stat.pid),
