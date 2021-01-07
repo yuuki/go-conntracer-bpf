@@ -51,6 +51,7 @@ insert_flows(pid_t pid, __u32 uid, struct sock *sk, __u16 dport, __u8 direction)
 	flow_key.saddr = flow.saddr;
 	flow_key.daddr = flow.daddr;
 	flow_key.dport = flow.dport;
+	flow_key.direction = flow.direction;
 
 	bpf_map_update_elem(&flows, &flow_key, &flow, BPF_ANY);
 }
@@ -111,6 +112,8 @@ enter_tcp_accept(struct pt_regs *ctx, struct sock *sk)
 	BPF_CORE_READ_INTO(&dport, sk, __sk_common.skc_dport);
 
 	insert_flows(pid, uid, sk, dport, FLOW_PASSIVE);
+
+	return 0;
 }
 
 SEC("kprobe/tcp_v4_connect")

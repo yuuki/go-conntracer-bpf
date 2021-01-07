@@ -17,6 +17,7 @@ struct ipv4_flow_key {
 	__u32 saddr;
 	__u32 daddr;
 	__u16 dport;
+	__u8 direction; 	// 1: "connect"(active), 2: "accept"(passive)
 };
 
 struct ipv6_flow_key {
