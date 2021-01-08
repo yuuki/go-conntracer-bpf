@@ -65,8 +65,9 @@ insert_flows(pid_t pid, __u32 uid, struct sock *sk, __u16 lport, __u8 direction)
 	bpf_map_update_elem(&flows, &flow_key, &flow, BPF_ANY);
 }
 
-static __always_inline int
-enter_tcp_connect(struct pt_regs *ctx, struct sock *sk)
+
+SEC("kprobe/tcp_v4_connect")
+int BPF_KPROBE(tcp_v4_connect, struct sock *sk)
 {
 	__u64 pid_tgid = bpf_get_current_pid_tgid();
 	__u32 pid = pid_tgid >> 32;
@@ -78,8 +79,8 @@ enter_tcp_connect(struct pt_regs *ctx, struct sock *sk)
 	return 0;
 }
 
-static __always_inline int
-exit_tcp_connect(struct pt_regs *ctx, int ret)
+SEC("kretprobe/tcp_v4_connect")
+int BPF_KRETPROBE(tcp_v4_connect_ret, int ret)
 {
 	__u64 pid_tgid = bpf_get_current_pid_tgid();
 	__u32 pid = pid_tgid >> 32;
@@ -106,8 +107,8 @@ end:
 	return 0;
 }
 
-static __always_inline int
-exit_tcp_accept(struct pt_regs *ctx, struct sock *sk)
+SEC("kretprobe/inet_csk_accept")
+int BPF_KRETPROBE(inet_csk_accept_ret, struct sock *sk)
 {
 	__u64 pid_tgid = bpf_get_current_pid_tgid();
 	__u32 pid = pid_tgid >> 32;
@@ -122,22 +123,4 @@ exit_tcp_accept(struct pt_regs *ctx, struct sock *sk)
 
 	log_debug("kretprobe/inet_csk_accept: pid_tgid:%d, lport:%d\n", pid_tgid, lport);
 	return 0;
-}
-
-SEC("kprobe/tcp_v4_connect")
-int BPF_KPROBE(tcp_v4_connect, struct sock *sk)
-{
-	return enter_tcp_connect(ctx, sk);
-}
-
-SEC("kretprobe/tcp_v4_connect")
-int BPF_KRETPROBE(tcp_v4_connect_ret, int ret)
-{
-	return exit_tcp_connect(ctx, ret);
-}
-
-SEC("kretprobe/inet_csk_accept")
-int BPF_KRETPROBE(inet_csk_accept_ret, struct sock *sk)
-{
-	return exit_tcp_accept(ctx, sk);
 }
