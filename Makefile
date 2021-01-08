@@ -17,9 +17,9 @@ $(LIBBPF_SRC):
 test:
 	$(SUDO) $(GO) test -v .
 
-.PHONY: examples/build
-examples/build:
-	go build -mod vendor -o $(BIN)/print_traces ./examples/print_traces/...
+.PHONY: printconn
+printconn:
+	go build -mod vendor ./tools/$@
 
 .PHONY: tidy
 tidy:
