@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: (LGPL-2.1 OR BSD-2-Clause)
 GO := $(shell which go)
-TOOL_BIN := printconn
+GO_SRC := $(shell find . -type f -name '*.go')
+TOOL := printconn
 LIB_NAME := conntracer
 SUDO := sudo -E
 OUTPUT := .output
@@ -24,7 +25,7 @@ msg = @printf '  %-8s %s%s\n'                       \
 MAKEFLAGS += --no-print-directory
 
 .PHONY: all
-all: bpf $(TOOL_BIN)
+all: bpf $(TOOL)
 
 #--- libbpf ---
 
@@ -64,12 +65,12 @@ bpf: $(INCLUDES_DIR)/$(LIB_NAME).skel.h
 
 go_env := GOOS=linux GOARCH=$(ARCH:x86_64=amd64) CGO_CFLAGS="-I $(INCLUDES_DIR)" CGO_LDFLAGS="$(abspath $(LIBBPF_OBJ)) -lelf -lz"
 
-$(TOOL_BIN): %: $(INCLUDES_DIR)/$(LIB_NAME).skel.h $(LIBBPF_OBJ)
+$(TOOL): $(INCLUDES_DIR)/$(LIB_NAME).skel.h $(LIBBPF_OBJ) $(filter-out *_test.go,$(GO_SRC))
 	$(call msg,BINARY,$@)
 	@$(go_env) go build -mod vendor ./tools/$@
 
 .PHONY: test
-test: %: $(INCLUDES_DIR)/$(LIB_NAME).skel.h $(LIBBPF_OBJ)
+test: $(INCLUDES_DIR)/$(LIB_NAME).skel.h $(LIBBPF_OBJ)
 	$(call msg,TEST)
 	$(go_env) $(SUDO) $(GO) test -v .
 
