@@ -1,13 +1,15 @@
 # SPDX-License-Identifier: (LGPL-2.1 OR BSD-2-Clause)
 GO := $(shell which go)
 TOOL_BIN := printconn
+LIB_NAME := conntracer
 SUDO := sudo -E
 OUTPUT := .output
 CLANG ?= clang
 LLVM_STRIP ?= llvm-strip
-BPFTOOL ?= $(abspath ../tools/bpftool)
+BPFTOOL ?= $(abspath tools/bpftool)
 LIBBPF_SRC := $(abspath libbpf/src)
 LIBBPF_OBJ := $(abspath $(OUTPUT)/libbpf.a)
+BPF_SRC_DIR := bpf
 INCLUDES_DIR := $(abspath includes)
 INCLUDES := -I$(OUTPUT) -I$(INCLUDES_DIR)
 CFLAGS := -g -Wall
@@ -46,13 +48,13 @@ $(LIBBPF_OBJ): $(wildcard $(LIBBPF_SRC)/*.[ch] $(LIBBPF_SRC)/Makefile) | $(OUTPU
 
 # Build BPF code
 linux_arch := $(ARCH:x86_64=x86)
-$(OUTPUT)/%.bpf.o: %.bpf.c $(LIBBPF_OBJ) $(wildcard %.h) vmlinux.h | $(OUTPUT)
+$(OUTPUT)/$(LIB_NAME).bpf.o: $(BPF_SRC_DIR)/$(LIB_NAME).bpf.c $(LIBBPF_OBJ) $(wildcard %.h) $(BPF_SRC_DIR)/vmlinux.h | $(OUTPUT)
 	$(call msg,BPF,$@)
 	@$(CLANG) -g -O2 -target bpf -fPIE -D__TARGET_ARCH_$(linux_arch) -DDEBUG=$(DEBUG) $(INCLUDES) -c $(filter %.c,$^) -o $@
 	@$(LLVM_STRIP) -g $@ # strip useless DWARF info
 
 # Generate BPF skeletons
-$(INCLUDES_DIR)/%.skel.h: $(OUTPUT)/%.bpf.o | $(OUTPUT)
+$(INCLUDES_DIR)/$(LIB_NAME).skel.h: $(OUTPUT)/$(LIB_NAME).bpf.o | $(OUTPUT)
 	$(call msg,GEN-SKEL,$@)
 	@$(BPFTOOL) gen skeleton $< > $@
 
@@ -60,14 +62,12 @@ $(INCLUDES_DIR)/%.skel.h: $(OUTPUT)/%.bpf.o | $(OUTPUT)
 
 go_env := GOOS=linux GOARCH=$(ARCH:x86_64=amd64) CGO_CFLAGS="-I $(INCLUDES_DIR)" CGO_LDFLAGS="$(abspath $(LIBBPF_OBJ)) -lelf -lz"
 
-$(patsubst %,$(OUTPUT)/%.o,$(TOOL_BIN)): %.o: %.skel.h
-
-$(TOOL_BIN): %: $(LIBBPF_OBJ)
+$(TOOL_BIN): %: $(INCLUDES_DIR)/$(LIB_NAME).skel.h $(LIBBPF_OBJ)
 	$(call msg,BINARY,$@)
 	@$(go_env) go build -mod vendor ./tools/$@
 
 .PHONY: test
-test: $(LIBBPF_OBJ)
+test: %: $(INCLUDES_DIR)/$(LIB_NAME).skel.h $(LIBBPF_OBJ)
 	$(call msg,TEST)
 	$(go_env) $(SUDO) $(GO) test -v .
 
