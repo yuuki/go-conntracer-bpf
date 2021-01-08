@@ -1,7 +1,6 @@
 export GOOS=linux
 export GOARCH=amd64
 export CGO_ENABLED=1
-export GODEBUG=cgocheck=2
 
 BIN := $(abspath ./bin)
 GO := $(shell which go)
