@@ -14,8 +14,6 @@ import (
 )
 
 /*
-#cgo CFLAGS: -Iincludes
-#cgo LDFLAGS: -L. -l:libbpf.a -lelf -lz
 #include <sys/resource.h>
 #include <arpa/inet.h>
 #include <errno.h>
