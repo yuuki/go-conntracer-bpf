@@ -81,3 +81,9 @@ clean:
 	$(call msg,CLEAN)
 	@rm -rf $(OUTPUT) printconn
 	@go clean -x -cache -testcache >/dev/null
+
+# delete failed targets
+.DELETE_ON_ERROR:
+
+# keep intermediate (.skel.h, .bpf.o, etc) targets
+.SECONDARY:
