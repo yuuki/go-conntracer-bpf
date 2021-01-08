@@ -17,7 +17,7 @@ typedef enum
 struct ipv4_flow_key {
 	__u32 saddr;
 	__u32 daddr;
-	__u16 dport;
+	__u16 lport;				// listening port
 	flow_direction direction; 	// 0x10: "connect"(active), 0x20: "accept"(passive)
 };
 
@@ -40,7 +40,7 @@ struct flow {
     __u32 saddr;  				// source address
     __u32 daddr;  				// destination address
 	char task[TASK_COMM_LEN];
-	__u16 dport;  				// destination port
+	__u16 lport;  				// listening port
 	flow_direction direction; 	// 1: "connect"(active), 2: "accept"(passive)
 	struct flow_stat stat;
 };

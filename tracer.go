@@ -44,7 +44,7 @@ type Flow struct {
 	SAddr       *net.IP
 	DAddr       *net.IP
 	ProcessName string
-	DPort       uint16
+	LPort       uint16 // Listening port
 	Direction   FlowDirection
 	Stat        *FlowStat
 }
@@ -155,7 +155,7 @@ func dumpFlows(fd C.int) ([]*Flow, error) {
 			SAddr:       &saddr,
 			DAddr:       &daddr,
 			ProcessName: C.GoString((*C.char)(unsafe.Pointer(&values[i].task))),
-			DPort:       ntohs((uint16)(values[i].dport)),
+			LPort:       ntohs((uint16)(values[i].lport)),
 			Direction:   FlowDirection((uint8)(values[i].direction)),
 			Stat: &FlowStat{
 				UID: (uint32)(values[i].stat.uid),
