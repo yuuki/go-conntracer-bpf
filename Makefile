@@ -45,7 +45,6 @@ $(OUTPUT)/%.bpf.o: %.bpf.c $(LIBBPF_OBJ) $(wildcard %.h) vmlinux.h | $(OUTPUT)
 # Generate BPF skeletons
 $(INCLUDES_DIR)/%.skel.h: $(OUTPUT)/%.bpf.o | $(OUTPUT)
 	@$(BPFTOOL) gen skeleton $< > $@
-	@cp $@ $(INCLUDES_DIR)/
 
 #--- User-space code --- 
 
