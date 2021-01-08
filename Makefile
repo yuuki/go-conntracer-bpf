@@ -24,7 +24,7 @@ msg = @printf '  %-8s %s%s\n'                       \
 MAKEFLAGS += --no-print-directory
 
 .PHONY: all
-all: $(TOOL_BIN)
+all: bpf $(TOOL_BIN)
 
 #--- libbpf ---
 
@@ -57,6 +57,8 @@ $(OUTPUT)/$(LIB_NAME).bpf.o: $(BPF_SRC_DIR)/$(LIB_NAME).bpf.c $(LIBBPF_OBJ) $(wi
 $(INCLUDES_DIR)/$(LIB_NAME).skel.h: $(OUTPUT)/$(LIB_NAME).bpf.o | $(OUTPUT)
 	$(call msg,GEN-SKEL,$@)
 	@$(BPFTOOL) gen skeleton $< > $@
+
+bpf: $(INCLUDES_DIR)/$(LIB_NAME).skel.h
 
 #--- User-space code --- 
 
