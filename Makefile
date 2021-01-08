@@ -32,4 +32,4 @@ bpf/build: $(LIBBPF_SRC)
 
 .PHONY: clean
 clean:
-	go clean -x -cache -testcache
+	go clean -x -cache -testcache >/dev/null
