@@ -51,8 +51,9 @@ type Flow struct {
 
 // FlowStat is an statistics for Flow.
 type FlowStat struct {
-	UID uint32
-	PID uint32
+	UID            uint32
+	PID            uint32
+	NewConnections uint32
 }
 
 // Tracer is an object for state retention.
@@ -160,8 +161,9 @@ func dumpFlows(fd C.int) ([]*Flow, error) {
 			LPort:       ntohs((uint16)(values[i].lport)),
 			Direction:   FlowDirection((uint8)(values[i].direction)),
 			Stat: &FlowStat{
-				UID: (uint32)(values[i].stat.uid),
-				PID: (uint32)(values[i].stat.pid),
+				UID:            (uint32)(values[i].stat.uid),
+				PID:            (uint32)(values[i].stat.pid),
+				NewConnections: (uint32)(values[i].stat.connections),
 			},
 		}
 		flows = append(flows, flow)
