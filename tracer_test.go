@@ -69,7 +69,7 @@ func TestDumpFlows(t *testing.T) {
 		addr := addr
 		wg.Add(1)
 		go func() {
-			client := &http.Client{}
+			client := &http.Client{Timeout: 3 * time.Second}
 			// no redirect
 			client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 				return http.ErrUseLastResponse
