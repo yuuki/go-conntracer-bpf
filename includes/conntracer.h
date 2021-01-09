@@ -28,8 +28,6 @@ struct ipv6_flow_key {
 };
 
 struct flow_stat {
-	__u32 uid;
-	__u32 pid;
 	__u32 connections;  	// the number of connections
 	// __u16 latency_max;
 	// __u16 latency_min;
@@ -42,6 +40,7 @@ struct flow {
 	char task[TASK_COMM_LEN];
 	__u16 lport;  				// listening port
 	flow_direction direction; 	// 1: "connect"(active), 2: "accept"(passive)
+	__u32 pid;
 	struct flow_stat stat;
 };
 

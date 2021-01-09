@@ -49,13 +49,12 @@ type Flow struct {
 	ProcessName string
 	LPort       uint16 // Listening port
 	Direction   FlowDirection
+	LastPID     uint32
 	Stat        *FlowStat
 }
 
 // FlowStat is an statistics for Flow.
 type FlowStat struct {
-	UID            uint32
-	PID            uint32
 	NewConnections uint32
 }
 
@@ -182,9 +181,8 @@ func dumpFlows(fd C.int) ([]*Flow, error) {
 			ProcessName: C.GoString((*C.char)(unsafe.Pointer(&values[i].task))),
 			LPort:       ntohs((uint16)(values[i].lport)),
 			Direction:   FlowDirection((uint8)(values[i].direction)),
+			LastPID:     (uint32)(values[i].pid),
 			Stat: &FlowStat{
-				UID:            (uint32)(values[i].stat.uid),
-				PID:            (uint32)(values[i].stat.pid),
 				NewConnections: (uint32)(values[i].stat.connections),
 			},
 		}

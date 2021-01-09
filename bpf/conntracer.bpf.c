@@ -41,10 +41,9 @@ struct {
 } flows SEC(".maps");
 
 static __always_inline void
-insert_flows(pid_t pid, __u32 uid, struct sock *sk, __u16 lport, __u8 direction)
+insert_flows(pid_t pid, struct sock *sk, __u16 lport, __u8 direction)
 {
 	struct flow flow = {}, *val;
-	struct flow_stat stat = {};
 	struct ipv4_flow_key flow_key = {};
 
 	BPF_CORE_READ_INTO(&flow.saddr, sk, __sk_common.skc_rcv_saddr);
@@ -53,10 +52,6 @@ insert_flows(pid_t pid, __u32 uid, struct sock *sk, __u16 lport, __u8 direction)
 	flow.direction = direction;
 	bpf_get_current_comm(flow.task, sizeof(flow.task));
 
-	stat.pid = pid;
-	stat.uid = uid;
-	flow.stat = stat;
-
 	flow_key.saddr = flow.saddr;
 	flow_key.daddr = flow.daddr;
 	flow_key.lport = flow.lport;
@@ -64,8 +59,7 @@ insert_flows(pid_t pid, __u32 uid, struct sock *sk, __u16 lport, __u8 direction)
 
 	val = bpf_map_lookup_elem(&flows, &flow_key);
 	if (val) {
-		__u32 *cnt;
-		cnt = &(val->stat.connections);
+		__u32 *cnt = &(val->stat.connections);
 		__atomic_add_fetch(cnt, 1, __ATOMIC_RELAXED);
 		return;
 	}
@@ -94,8 +88,7 @@ int BPF_KRETPROBE(tcp_v4_connect_ret, int ret)
 	__u64 pid_tgid = bpf_get_current_pid_tgid();
 	__u32 pid = pid_tgid >> 32;
 	__u32 tid = pid_tgid;
-	__u32 uid = bpf_get_current_uid_gid();
-	__u16 lport = 0;
+	__u16 dport = 0;
 
 	struct sock** skpp = bpf_map_lookup_elem(&sockets, &tid);
 	if (!skpp)
@@ -106,13 +99,13 @@ int BPF_KRETPROBE(tcp_v4_connect_ret, int ret)
 
 	struct sock* sk = *skpp;
 
-	BPF_CORE_READ_INTO(&lport, sk, __sk_common.skc_dport);
+	BPF_CORE_READ_INTO(&dport, sk, __sk_common.skc_dport);
 
-	insert_flows(pid, uid, sk, lport, FLOW_ACTIVE);
+	insert_flows(pid, sk, dport, FLOW_ACTIVE);
 
 end:
 	bpf_map_delete_elem(&sockets, &tid);
-	log_debug("kretprobe/tcp_v4_connect: pid_tgid:%d, uid:%d, lport:%d\n", pid_tgid, uid, lport);
+	log_debug("kretprobe/tcp_v4_connect: pid_tgid:%d, dport:%d\n", pid_tgid, dport);
 	return 0;
 }
 
@@ -128,7 +121,7 @@ int BPF_KRETPROBE(inet_csk_accept_ret, struct sock *sk)
 
 	BPF_CORE_READ_INTO(&lport, sk, __sk_common.skc_num);
 
-	insert_flows(pid, 0, sk, lport, FLOW_PASSIVE); // TODO: handling uid
+	insert_flows(pid, sk, lport, FLOW_PASSIVE); // TODO: handling uid
 
 	log_debug("kretprobe/inet_csk_accept: pid_tgid:%d, lport:%d\n", pid_tgid, lport);
 	return 0;
