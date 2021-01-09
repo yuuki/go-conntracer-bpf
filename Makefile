@@ -75,7 +75,7 @@ $(TOOL): $(INCLUDES_DIR)/$(LIB_NAME).skel.h $(LIBBPF_OBJ) $(filter-out *_test.go
 .PHONY: test
 test: $(INCLUDES_DIR)/$(LIB_NAME).skel.h $(LIBBPF_OBJ)
 	$(call msg,TEST)
-	$(go_env) $(SUDO) $(GO) test -v .
+	@$(go_env) $(SUDO) $(GO) test -v .
 
 .PHONY: lint
 lint: $(filter-out *_test.go,$(GO_SRC))
