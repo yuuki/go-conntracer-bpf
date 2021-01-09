@@ -1,6 +1,7 @@
 package conntracer
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -38,6 +39,7 @@ const (
 	FlowPassive
 )
 
+// Flow is a bunch of aggregated connections group by listening port.
 type Flow struct {
 	SAddr       *net.IP
 	DAddr       *net.IP
@@ -47,11 +49,13 @@ type Flow struct {
 	Stat        *FlowStat
 }
 
+// FlowStat is an statistics for Flow.
 type FlowStat struct {
 	UID uint32
 	PID uint32
 }
 
+// Tracer is an object for state retention.
 type Tracer struct {
 	obj      *C.struct_conntracer_bpf
 	cb       func([]*Flow) error
@@ -67,7 +71,7 @@ func NewTracer(cb func([]*Flow) error) (*Tracer, error) {
 
 	obj := C.conntracer_bpf__open_and_load()
 	if obj == nil {
-		return nil, fmt.Errorf("failed to open and load BPF object\n")
+		return nil, errors.New("failed to open and load BPF object")
 	}
 
 	cerr := C.conntracer_bpf__attach(obj)
