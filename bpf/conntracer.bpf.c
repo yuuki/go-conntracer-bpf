@@ -43,7 +43,7 @@ struct {
 static __always_inline void
 insert_flows(pid_t pid, __u32 uid, struct sock *sk, __u16 lport, __u8 direction)
 {
-	struct flow flow = {};
+	struct flow flow = {}, *val;
 	struct flow_stat stat = {};
 	struct ipv4_flow_key flow_key = {};
 
@@ -62,6 +62,15 @@ insert_flows(pid_t pid, __u32 uid, struct sock *sk, __u16 lport, __u8 direction)
 	flow_key.lport = flow.lport;
 	flow_key.direction = flow.direction;
 
+	val = bpf_map_lookup_elem(&flows, &flow_key);
+	if (val) {
+		__u32 *cnt;
+		cnt = &(val->stat.connections);
+		__atomic_add_fetch(cnt, 1, __ATOMIC_RELAXED);
+		return;
+	}
+
+	flow.stat.connections = 1;
 	bpf_map_update_elem(&flows, &flow_key, &flow, BPF_ANY);
 }
 

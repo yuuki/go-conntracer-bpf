@@ -30,7 +30,7 @@ struct ipv6_flow_key {
 struct flow_stat {
 	__u32 uid;
 	__u32 pid;
-	__u16 connection_cnt;
+	__u32 connections;  	// the number of connections
 	// __u16 latency_max;
 	// __u16 latency_min;
 	// __u16 latency_avg;
