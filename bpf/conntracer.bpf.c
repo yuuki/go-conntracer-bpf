@@ -121,7 +121,7 @@ int BPF_KRETPROBE(inet_csk_accept_ret, struct sock *sk)
 
 	BPF_CORE_READ_INTO(&lport, sk, __sk_common.skc_num);
 
-	insert_flows(pid, sk, lport, FLOW_PASSIVE); // TODO: handling uid
+	insert_flows(pid, sk, lport, FLOW_PASSIVE);
 
 	log_debug("kretprobe/inet_csk_accept: pid_tgid:%d, lport:%d\n", pid_tgid, lport);
 	return 0;
