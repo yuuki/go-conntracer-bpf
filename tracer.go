@@ -38,8 +38,8 @@ const (
 	// FlowPassive are 'passive open'
 	FlowPassive
 
-	// FlowMapOpsBatchSize is batch size of BPF map(flows) lookup_and_delete.
-	FlowMapOpsBatchSize = 10
+	// defaultFlowMapOpsBatchSize is batch size of BPF map(flows) lookup_and_delete.
+	defaultFlowMapOpsBatchSize = 10
 )
 
 // Flow is a bunch of aggregated connections group by listening port.
@@ -64,6 +64,9 @@ type Tracer struct {
 	obj      *C.struct_conntracer_bpf
 	cb       func([]*Flow) error
 	stopChan chan struct{}
+
+	// option
+	batchSize int
 }
 
 // NewTracer creates a Tracer object.
@@ -85,7 +88,13 @@ func NewTracer(cb func([]*Flow) error) (*Tracer, error) {
 
 	stopChan := make(chan struct{})
 
-	return &Tracer{obj: obj, cb: cb, stopChan: stopChan}, nil
+	t := &Tracer{
+		obj:       obj,
+		cb:        cb,
+		stopChan:  stopChan,
+		batchSize: defaultFlowMapOpsBatchSize,
+	}
+	return t, nil
 }
 
 // Close closes tracer.
@@ -104,6 +113,10 @@ func (t *Tracer) Stop() {
 	close(t.stopChan)
 }
 
+func (t *Tracer) flowsMapFD() C.int {
+	return C.bpf_map__fd(t.obj.maps.flows)
+}
+
 func (t *Tracer) pollFlows(interval time.Duration) {
 	tick := time.NewTicker(interval)
 	defer tick.Stop()
@@ -113,7 +126,7 @@ func (t *Tracer) pollFlows(interval time.Duration) {
 		case <-t.stopChan:
 			return
 		case <-tick.C:
-			flows, err := dumpFlows(C.bpf_map__fd(t.obj.maps.flows))
+			flows, err := dumpFlows(t.flowsMapFD())
 			if err != nil {
 				log.Println(err)
 			}
@@ -149,7 +162,7 @@ func dumpFlows(fd C.int) ([]*Flow, error) {
 			unsafe.Pointer(uintptr(ckeys)+uintptr(nRead*C.sizeof_struct_ipv4_flow_key)),
 			unsafe.Pointer(uintptr(cvalues)+uintptr(nRead*C.sizeof_struct_ipv4_flow_key)),
 			&n, opts)
-		if ret != 0 && err != syscall.Errno(syscall.ENOENT) {
+		if err != nil && err != syscall.Errno(syscall.ENOENT) {
 			return nil, fmt.Errorf("Error bpf_map_lookup_and_delete_batch, fd:%d, ret:%d, %s", fd, ret, err)
 		}
 		nRead += (int)(n)
