@@ -37,6 +37,9 @@ const (
 	FlowActive
 	// FlowPassive are 'passive open'
 	FlowPassive
+
+	// FlowMapOpsBatchSize is batch size of BPF map(flows) lookup_and_delete.
+	FlowMapOpsBatchSize = 10
 )
 
 // Flow is a bunch of aggregated connections group by listening port.
@@ -142,12 +145,18 @@ func dumpFlows(fd C.int) ([]*Flow, error) {
 	for ret == 0 {
 		n = batchSize
 		// TODO: ckeys, cvalues pointer increment
-		ret, err = C.bpf_map_lookup_and_delete_batch(fd, pKey, pNextKey, ckeys, cvalues, &n, opts)
+		ret, err = C.bpf_map_lookup_and_delete_batch(fd, pKey, pNextKey,
+			unsafe.Pointer(uintptr(ckeys)+uintptr(nRead*C.sizeof_struct_ipv4_flow_key)),
+			unsafe.Pointer(uintptr(cvalues)+uintptr(nRead*C.sizeof_struct_ipv4_flow_key)),
+			&n, opts)
 		if ret != 0 && err != syscall.Errno(syscall.ENOENT) {
 			return nil, fmt.Errorf("Error bpf_map_lookup_and_delete_batch, fd:%d, ret:%d, %s", fd, ret, err)
 		}
 		nRead += (int)(n)
-		pKey = pNextKey // TODO: test
+		if err == syscall.Errno(syscall.ENOENT) {
+			break
+		}
+		pKey = pNextKey
 	}
 
 	flows := make([]*Flow, 0, nRead)
