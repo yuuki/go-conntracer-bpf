@@ -99,7 +99,7 @@ func NewTracer(cb func([]*Flow) error) (*Tracer, error) {
 
 // Close closes tracer.
 func (t *Tracer) Close() {
-	t.Stop()
+	close(t.stopChan)
 	C.conntracer_bpf__destroy(t.obj)
 }
 
@@ -110,7 +110,7 @@ func (t *Tracer) Start(interval time.Duration) {
 
 // Stop stops polling loop.
 func (t *Tracer) Stop() {
-	close(t.stopChan)
+	t.stopChan <- struct{}{}
 }
 
 func (t *Tracer) flowsMapFD() C.int {
