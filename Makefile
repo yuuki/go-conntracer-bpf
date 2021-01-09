@@ -61,6 +61,7 @@ $(INCLUDES_DIR)/$(LIB_NAME).skel.h: $(OUTPUT)/$(LIB_NAME).bpf.o | $(OUTPUT)
 	$(call msg,GEN-SKEL,$@)
 	@$(BPFTOOL) gen skeleton $< > $@
 
+.PHONY: bpf
 bpf: $(INCLUDES_DIR)/$(LIB_NAME).skel.h
 
 #--- User-space code --- 
