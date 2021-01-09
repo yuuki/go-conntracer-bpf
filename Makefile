@@ -1,8 +1,11 @@
 # SPDX-License-Identifier: (LGPL-2.1 OR BSD-2-Clause)
-GO := $(shell which go)
-GO_SRC := $(shell find . -type f -name '*.go')
 TOOL := printconn
 LIB_NAME := conntracer
+
+GO := $(shell which go)
+GO_SRC := $(shell find . -type f -name '*.go')
+GOLINT = $$(go env GOPATH)/bin/golint -set_exit_status $$(go list -mod=vendor ./...)
+
 SUDO := sudo -E
 OUTPUT := .output
 CLANG ?= clang
@@ -73,6 +76,11 @@ $(TOOL): $(INCLUDES_DIR)/$(LIB_NAME).skel.h $(LIBBPF_OBJ) $(filter-out *_test.go
 test: $(INCLUDES_DIR)/$(LIB_NAME).skel.h $(LIBBPF_OBJ)
 	$(call msg,TEST)
 	$(go_env) $(SUDO) $(GO) test -v .
+
+.PHONY: lint
+lint: $(filter-out *_test.go,$(GO_SRC))
+	$(call msg,LINT)
+	@$(GOLINT)
 
 .PHONY: tidy
 tidy:
