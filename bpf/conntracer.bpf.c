@@ -82,7 +82,7 @@ int BPF_KPROBE(tcp_v4_connect, struct sock *sk)
 	__u32 pid = pid_tgid >> 32;
 	__u32 tid = pid_tgid;
 
-	bpf_map_update_elem(&sockets, &pid, &sk, BPF_ANY);
+	bpf_map_update_elem(&sockets, &tid, &sk, BPF_ANY);
 
 	log_debug("kprobe/tcp_v4_connect: pid_tgid:%d\n", pid_tgid);
 	return 0;
