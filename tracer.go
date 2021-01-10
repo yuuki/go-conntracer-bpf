@@ -164,7 +164,6 @@ func dumpFlows(fd C.int) ([]*Flow, error) {
 	)
 	for ret == 0 {
 		n = batchSize
-		// TODO: ckeys, cvalues pointer increment
 		ret, err = C.bpf_map_lookup_and_delete_batch(fd, pKey, pNextKey,
 			unsafe.Pointer(uintptr(ckeys)+uintptr(nRead*C.sizeof_struct_ipv4_flow_key)),
 			unsafe.Pointer(uintptr(cvalues)+uintptr(nRead*C.sizeof_struct_ipv4_flow_key)),
