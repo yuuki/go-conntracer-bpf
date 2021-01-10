@@ -17,11 +17,7 @@ const (
 )
 
 func TestNewTracer(t *testing.T) {
-	cb := func(flows []*Flow) error {
-		assert.Empty(t, flows, "flows should be empty")
-		return nil
-	}
-	tracer, err := NewTracer(cb)
+	tracer, err := NewTracer()
 	defer tracer.Close()
 
 	assert.NoError(t, err, "err should be nil")
@@ -32,28 +28,20 @@ func TestStart(t *testing.T) {
 		assert.Empty(t, flows, "flows should be empty")
 		return nil
 	}
-	tracer, _ := NewTracer(cb)
-	tracer.Start(defaultInterval)
+	tracer, _ := NewTracer()
+	tracer.Start(cb, defaultInterval)
 
 	tracer.Close()
 }
 
 func TestClose(t *testing.T) {
-	cb := func(flows []*Flow) error {
-		assert.Empty(t, flows, "flows should be empty")
-		return nil
-	}
-	tracer, _ := NewTracer(cb)
+	tracer, _ := NewTracer()
 	tracer.Close()
 }
 
 //TODO: replacement of using ip addrs on docker container
 func TestDumpFlows(t *testing.T) {
-	cb := func(flows []*Flow) error {
-		assert.Empty(t, flows, "flows should be empty")
-		return nil
-	}
-	tracer, _ := NewTracer(cb)
+	tracer, _ := NewTracer()
 	defer tracer.Close()
 
 	tracer.batchSize = 2
@@ -71,7 +59,7 @@ func TestDumpFlows(t *testing.T) {
 		addr := addr
 		wg.Add(1)
 		go func() {
-			client := &http.Client{Timeout: 3 * time.Second}
+			client := &http.Client{Timeout: 5 * time.Second}
 			// no redirect
 			client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 				return http.ErrUseLastResponse
@@ -85,7 +73,7 @@ func TestDumpFlows(t *testing.T) {
 	}
 	wg.Wait()
 
-	flows, err := dumpFlows(tracer.flowsMapFD())
+	flows, err := tracer.DumpFlows()
 
 	assert.NoError(t, err, "err should be nil")
 
