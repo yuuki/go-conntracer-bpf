@@ -1,4 +1,4 @@
-TOOL := printconn
+TOOL := conntop
 LIB_NAME := conntracer
 
 GO := $(shell which go)
@@ -91,7 +91,7 @@ tidy:
 .PHONY: clean
 clean:
 	$(call msg,CLEAN)
-	@rm -rf $(OUTPUT) printconn
+	@rm -rf $(OUTPUT) $(TOOL)
 	@go clean -x -cache -testcache >/dev/null
 
 # delete failed targets
