@@ -64,6 +64,7 @@ type FlowStat struct {
 type Tracer struct {
 	obj      *C.struct_conntracer_bpf
 	cb       func([]*Flow) error
+	flowsChan chan []*Flow
 	stopChan chan struct{}
 
 	// option
@@ -87,11 +88,13 @@ func NewTracer(cb func([]*Flow) error) (*Tracer, error) {
 		return nil, fmt.Errorf("failed to attach BPF programs: %v", C.strerror(-cerr))
 	}
 
-	stopChan := make(chan struct{})
+	stopChan, := make(chan struct{})
+	flowsChan := make(chan []*Flow)
 
 	t := &Tracer{
 		obj:       obj,
 		cb:        cb,
+		flowsChan: flowsChan,
 		stopChan:  stopChan,
 		batchSize: defaultFlowMapOpsBatchSize,
 	}
@@ -112,6 +115,11 @@ func (t *Tracer) Start(interval time.Duration) {
 // Stop stops polling loop.
 func (t *Tracer) Stop() {
 	t.stopChan <- struct{}{}
+}
+
+// DumpFlows gets and deletes all flows.
+func (t *Tracer) DumpFlows() ([]*Flow, error) {
+	return dumpFlows(t.flowsMapFD())
 }
 
 func (t *Tracer) flowsMapFD() C.int {
