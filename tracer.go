@@ -17,6 +17,9 @@ import (
 )
 
 /*
+#cgo CFLAGS: -I${SRCDIR}/includes
+#cgo LDFLAGS: -lelf -lz
+
 #include <sys/resource.h>
 #include <arpa/inet.h>
 #include <errno.h>
