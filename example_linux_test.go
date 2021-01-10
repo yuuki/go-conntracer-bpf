@@ -11,6 +11,14 @@ import (
 )
 
 func Example() {
+	// Load bpf program to kernel.
+	t, err := conntracer.NewTracer()
+	if err != nil {
+		fmt.Println("failed to prepare tracer: ", err)
+		return
+	}
+	defer t.Close()
+
 	cb := func(flows []*conntracer.Flow) error {
 		for _, flow := range flows {
 			fmt.Printf("%v\n", flow)
@@ -18,16 +26,8 @@ func Example() {
 		return nil
 	}
 
-	// Load bpf program to kernel.
-	t, err := conntracer.NewTracer(cb)
-	if err != nil {
-		fmt.Println("failed to prepare tracer: ", err)
-		return
-	}
-	defer t.Close()
-
 	// Start process of periodically polling network flows.
-	t.Start(1 * time.Second)
+	t.Start(cb, 1*time.Second)
 
 	// Stop process of polling them.
 	t.Stop()

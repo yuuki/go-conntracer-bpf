@@ -63,7 +63,6 @@ type FlowStat struct {
 // Tracer is an object for state retention.
 type Tracer struct {
 	obj      *C.struct_conntracer_bpf
-	cb       func([]*Flow) error
 	stopChan chan struct{}
 
 	// option
@@ -71,7 +70,7 @@ type Tracer struct {
 }
 
 // NewTracer creates a Tracer object.
-func NewTracer(cb func([]*Flow) error) (*Tracer, error) {
+func NewTracer() (*Tracer, error) {
 	// Bump RLIMIT_MEMLOCK to allow BPF sub-system to do anything
 	if err := bumpMemlockRlimit(); err != nil {
 		return nil, err
@@ -91,7 +90,6 @@ func NewTracer(cb func([]*Flow) error) (*Tracer, error) {
 
 	t := &Tracer{
 		obj:       obj,
-		cb:        cb,
 		stopChan:  stopChan,
 		batchSize: defaultFlowMapOpsBatchSize,
 	}
@@ -105,8 +103,8 @@ func (t *Tracer) Close() {
 }
 
 // Start starts polling loop.
-func (t *Tracer) Start(interval time.Duration) {
-	go t.pollFlows(interval)
+func (t *Tracer) Start(cb func([]*Flow) error, interval time.Duration) {
+	go t.pollFlows(cb, interval)
 }
 
 // Stop stops polling loop.
@@ -114,11 +112,16 @@ func (t *Tracer) Stop() {
 	t.stopChan <- struct{}{}
 }
 
+// DumpFlows gets and deletes all flows.
+func (t *Tracer) DumpFlows() ([]*Flow, error) {
+	return dumpFlows(t.flowsMapFD())
+}
+
 func (t *Tracer) flowsMapFD() C.int {
 	return C.bpf_map__fd(t.obj.maps.flows)
 }
 
-func (t *Tracer) pollFlows(interval time.Duration) {
+func (t *Tracer) pollFlows(cb func([]*Flow) error, interval time.Duration) {
 	tick := time.NewTicker(interval)
 	defer tick.Stop()
 
@@ -127,11 +130,11 @@ func (t *Tracer) pollFlows(interval time.Duration) {
 		case <-t.stopChan:
 			return
 		case <-tick.C:
-			flows, err := dumpFlows(t.flowsMapFD())
+			flows, err := t.DumpFlows()
 			if err != nil {
 				log.Println(err)
 			}
-			if err := t.cb(flows); err != nil {
+			if err := cb(flows); err != nil {
 				log.Println(err)
 			}
 		}
