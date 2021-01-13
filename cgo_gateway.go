@@ -8,7 +8,9 @@ package conntracer
 int handleFlow(void *ctx, void *data, size_t data_sz);
 */
 import "C"
-import "unsafe"
+import (
+	"unsafe"
+)
 
 //export handleFlow
 func handleFlow(ctx unsafe.Pointer, data unsafe.Pointer, dataSZ C.size_t) C.int {
