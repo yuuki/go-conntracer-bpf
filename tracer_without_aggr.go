@@ -78,6 +78,7 @@ func (t *TracerWithoutAggr) Start(fc chan *Flow) error {
 		select {
 		case <-t.stopChan:
 			return nil
+		default:
 		}
 
 		ret, err := C.ring_buffer__poll(t.rb, 100 /* timeout, ms */)
