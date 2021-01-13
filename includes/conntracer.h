@@ -35,6 +35,7 @@ struct flow_stat {
 };
 
 struct flow {
+	__u64 ts_us;
     __u32 saddr;  				// source address
     __u32 daddr;  				// destination address
 	char task[TASK_COMM_LEN];
