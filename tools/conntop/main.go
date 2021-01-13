@@ -25,6 +25,7 @@ func init() {
 func main() {
 	if noAggr {
 		startWithoutAggr()
+		return
 	}
 
 	t, err := conntracer.NewTracer()
@@ -90,9 +91,11 @@ func startWithoutAggr() {
 	printFlow := func(flow *conntracer.Flow) {
 		switch flow.Direction {
 		case conntracer.FlowActive:
-			fmt.Printf("%-25s %-25s %-20d %-10d\n", flow.SAddr, flow.DAddr, flow.LPort, flow.LastPID)
+			fmt.Printf("%-25s %-25s %-20d %-10d %-10d\n",
+				flow.SAddr, flow.DAddr, flow.LPort, flow.LastPID, flow.ProcessName)
 		case conntracer.FlowPassive:
-			fmt.Printf("%-25s %-25s %-20d %-10d\n", flow.DAddr, flow.SAddr, flow.LPort, flow.LastPID)
+			fmt.Printf("%-25s %-25s %-20d %-10d %-10d\n",
+				flow.DAddr, flow.SAddr, flow.LPort, flow.LastPID, flow.ProcessName)
 		}
 	}
 
@@ -100,12 +103,17 @@ func startWithoutAggr() {
 	signal.Notify(sig, os.Interrupt, os.Kill)
 	log.Printf("Waiting interval %s for flows to be collected...\n", interval)
 	// print header
-	fmt.Printf("%-25s %-25s %-20s %-10s\n", "LADDR", "RADDR", "RPORT", "PID")
+	fmt.Printf("%-25s %-25s %-20s %-10s %-10s\n", "LADDR", "RADDR", "RPORT", "PID", "COMM")
 
 	for {
-		printFlow(<-flowChan)
+		select {
+		case flow := <-flowChan:
+			printFlow(flow)
+		case ret := <-sig:
+			log.Printf("Received %v, Goodbye\n", ret)
+			return
+		}
 	}
 
-	ret := <-sig
-	log.Printf("Received %v, Goodbye\n", ret)
+	return
 }
