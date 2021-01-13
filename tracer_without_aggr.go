@@ -96,3 +96,9 @@ func (t *TracerWithoutAggr) Start(fc chan *Flow) error {
 func (t *TracerWithoutAggr) Stop() {
 	t.stopChan <- struct{}{}
 }
+
+// Close closes tracer.
+func (t *TracerWithoutAggr) Close() {
+	close(t.stopChan)
+	C.conntracer_without_aggr_bpf__destroy(t.obj)
+}
