@@ -40,16 +40,20 @@ struct {
 static __always_inline void
 insert_flows(pid_t pid, struct sock *sk, __u16 lport, __u8 direction)
 {
-	struct flow flow = {}, *val;
+	struct flow *flow;
 
-	flow.ts_us = bpf_ktime_get_ns() / 1000;
-	BPF_CORE_READ_INTO(&flow.saddr, sk, __sk_common.skc_rcv_saddr);
-	BPF_CORE_READ_INTO(&flow.daddr, sk, __sk_common.skc_daddr);
-	flow.lport = lport;
-	flow.direction = direction;
-	bpf_get_current_comm(flow.task, sizeof(flow.task));
+	flow = bpf_ringbuf_reserve(&flows, sizeof(flow), 0);
+	if (!flow)
+		return;
 
-    bpf_ringbuf_output(&flows, &flow, sizeof(flow), 0);
+	flow->ts_us = bpf_ktime_get_ns() / 1000;
+	BPF_CORE_READ_INTO(&flow->saddr, sk, __sk_common.skc_rcv_saddr);
+	BPF_CORE_READ_INTO(&flow->daddr, sk, __sk_common.skc_daddr);
+	flow->lport = lport;
+	flow->direction = direction;
+	bpf_get_current_comm(flow->task, sizeof(flow->task));
+
+    bpf_ringbuf_submit(flow, 0);
 }
 
 SEC("kprobe/tcp_v4_connect")
