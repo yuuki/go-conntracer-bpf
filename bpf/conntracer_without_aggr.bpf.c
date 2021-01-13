@@ -34,8 +34,6 @@ struct {
 
 struct {
 	__uint(type, BPF_MAP_TYPE_RINGBUF);
-    __uint(max_entries, 256 * 1024 /* 256 KB */);
-	__type(key, u32);
 	__type(value, struct flow *);
 } flows SEC(".maps");
 
