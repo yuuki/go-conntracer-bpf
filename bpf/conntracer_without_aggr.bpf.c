@@ -42,7 +42,7 @@ insert_flows(pid_t pid, struct sock *sk, __u16 lport, __u8 direction)
 {
 	struct flow *flow;
 
-	flow = bpf_ringbuf_reserve(&flows, sizeof(flow), 0);
+	flow = bpf_ringbuf_reserve(&flows, sizeof(*flow), 0);
 	if (!flow)
 		return;
 
@@ -51,7 +51,7 @@ insert_flows(pid_t pid, struct sock *sk, __u16 lport, __u8 direction)
 	BPF_CORE_READ_INTO(&flow->daddr, sk, __sk_common.skc_daddr);
 	flow->lport = lport;
 	flow->direction = direction;
-	bpf_get_current_comm(flow->task, sizeof(flow->task));
+	bpf_get_current_comm(&flow->task, sizeof(flow->task));
 
     bpf_ringbuf_submit(flow, 0);
 }
