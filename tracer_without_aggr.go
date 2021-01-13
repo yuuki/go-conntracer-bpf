@@ -49,6 +49,7 @@ func NewTracerWithoutAggr() (*TracerWithoutAggr, error) {
 
 	ret, err := C.conntracer_without_aggr_bpf__attach(obj)
 	if ret != 0 {
+		C.conntracer_without_aggr_bpf__destroy(obj)
 		return nil, fmt.Errorf("failed to attach BPF programs: %v", err)
 	}
 
@@ -66,6 +67,7 @@ func NewTracerWithoutAggr() (*TracerWithoutAggr, error) {
 	return &TracerWithoutAggr{obj: obj, rb: rb, stopChan: stopChan}, nil
 }
 
+// TODO: sync.Pool
 var globalFlowChan chan *Flow
 
 // Start starts loop of polling events from kernel.
