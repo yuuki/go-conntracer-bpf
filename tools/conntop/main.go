@@ -12,15 +12,21 @@ import (
 )
 
 var interval time.Duration
+var noAggr bool
 
 func init() {
 	log.SetFlags(0)
 
 	flag.DurationVar(&interval, "interval", 3*time.Second, "polling interval (default 3s)")
+	flag.BoolVar(&noAggr, "noaggr", false, "without aggregation (default false)")
 	flag.Parse()
 }
 
 func main() {
+	if noAggr {
+		startWithoutAggr()
+	}
+
 	t, err := conntracer.NewTracer()
 	if err != nil {
 		log.Println(err)
@@ -68,5 +74,38 @@ func main() {
 	ret := <-sig
 	stopChan <- struct{}{}
 
+	log.Printf("Received %v, Goodbye\n", ret)
+}
+
+func startWithoutAggr() {
+	t, err := conntracer.NewTracerWithoutAggr()
+	if err != nil {
+		log.Println(err)
+		os.Exit(-1)
+	}
+
+	flowChan := make(chan *conntracer.Flow)
+	go t.Start(flowChan)
+
+	printFlow := func(flow *conntracer.Flow) {
+		switch flow.Direction {
+		case conntracer.FlowActive:
+			fmt.Printf("%-25s %-25s %-20d %-10d\n", flow.SAddr, flow.DAddr, flow.LPort, flow.LastPID)
+		case conntracer.FlowPassive:
+			fmt.Printf("%-25s %-25s %-20d %-10d\n", flow.DAddr, flow.SAddr, flow.LPort, flow.LastPID)
+		}
+	}
+
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, os.Kill)
+	log.Printf("Waiting interval %s for flows to be collected...\n", interval)
+	// print header
+	fmt.Printf("%-25s %-25s %-20s %-10s\n", "LADDR", "RADDR", "RPORT", "PID")
+
+	for {
+		printFlow(<-flowChan)
+	}
+
+	ret := <-sig
 	log.Printf("Received %v, Goodbye\n", ret)
 }
