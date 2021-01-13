@@ -67,7 +67,7 @@ bpf: $(patsubst %,$(INCLUDES_DIR)/%.skel.h,$(BPF_PROGS))
 
 #--- User-space code ---
 
-go_env := GOOS=linux GOARCH=$(ARCH:x86_64=amd64) CC="clang" CGO_CFLAGS="-I $(INCLUDES_DIR) -Wno-implicit-function-declaration" CGO_LDFLAGS="$(abspath $(LIBBPF_OBJ)) -lelf -lz"
+go_env := GOOS=linux GOARCH=$(ARCH:x86_64=amd64) CGO_CFLAGS="-I $(INCLUDES_DIR) -Wno-implicit-function-declaration" CGO_LDFLAGS="$(abspath $(LIBBPF_OBJ)) -lelf -lz"
 
 $(TOOL): bpf $(LIBBPF_OBJ) $(filter-out *_test.go,$(GO_SRC))
 	$(call msg,BINARY,$@)
