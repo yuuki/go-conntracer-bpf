@@ -51,6 +51,7 @@ $(LIBBPF_OBJ): $(wildcard $(LIBBPF_SRC)/*.[ch] $(LIBBPF_SRC)/Makefile) | $(OUTPU
 #--- Kernel-space code --- 
 
 # Build BPF code
+linux_arch := $(ARCH:x86_64=x86)
 $(OUTPUT)/%.bpf.o: $(BPF_SRC_DIR)/%.bpf.c $(LIBBPF_OBJ) $(wildcard %.h) $(BPF_SRC_DIR)/vmlinux.h | $(OUTPUT)
 	$(call msg,BPF,$@)
 	@$(CLANG) -g -O2 -target bpf -fPIE -D__TARGET_ARCH_$(linux_arch) -DDEBUG=$(DEBUG) $(INCLUDES) -c $(filter %.c,$^) -o $@
