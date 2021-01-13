@@ -89,3 +89,8 @@ func (t *TracerWithoutAggr) Start(fc chan *Flow) error {
 	}
 	return nil
 }
+
+// Stop stop loop of polling events.
+func (t *TracerWithoutAggr) Stop() {
+	t.stopChan <- struct{}{}
+}
