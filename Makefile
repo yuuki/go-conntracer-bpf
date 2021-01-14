@@ -1,5 +1,4 @@
 TOOL := conntop
-LIB_NAME := conntracer
 
 GO := $(shell which go)
 GO_SRC := $(shell find . -type f -name '*.go')
@@ -18,7 +17,9 @@ INCLUDES := -I$(OUTPUT) -I$(INCLUDES_DIR)
 CFLAGS := -g -Wall
 ARCH_UNAME := $(shell uname -m)
 ARCH ?= $(ARCH_UNAME:aarch64=arm64)
-DEBUG ?= 1
+DEBUG ?= 0
+
+BPF_PROGS = conntracer conntracer_without_aggr
 
 msg = @printf '  %-8s %s%s\n'                       \
                 "$(1)"                                          \
@@ -51,29 +52,29 @@ $(LIBBPF_OBJ): $(wildcard $(LIBBPF_SRC)/*.[ch] $(LIBBPF_SRC)/Makefile) | $(OUTPU
 
 # Build BPF code
 linux_arch := $(ARCH:x86_64=x86)
-$(OUTPUT)/$(LIB_NAME).bpf.o: $(BPF_SRC_DIR)/$(LIB_NAME).bpf.c $(LIBBPF_OBJ) $(wildcard %.h) $(BPF_SRC_DIR)/vmlinux.h | $(OUTPUT)
+$(OUTPUT)/%.bpf.o: $(BPF_SRC_DIR)/%.bpf.c $(LIBBPF_OBJ) $(wildcard %.h) $(BPF_SRC_DIR)/vmlinux.h | $(OUTPUT)
 	$(call msg,BPF,$@)
 	@$(CLANG) -g -O2 -target bpf -fPIE -D__TARGET_ARCH_$(linux_arch) -DDEBUG=$(DEBUG) $(INCLUDES) -c $(filter %.c,$^) -o $@
 	@$(LLVM_STRIP) -g $@ # strip useless DWARF info
 
 # Generate BPF skeletons
-$(INCLUDES_DIR)/$(LIB_NAME).skel.h: $(OUTPUT)/$(LIB_NAME).bpf.o | $(OUTPUT)
+$(INCLUDES_DIR)/%.skel.h: $(OUTPUT)/%.bpf.o | $(OUTPUT)
 	$(call msg,GEN-SKEL,$@)
 	@$(BPFTOOL) gen skeleton $< > $@
 
 .PHONY: bpf
-bpf: $(INCLUDES_DIR)/$(LIB_NAME).skel.h
+bpf: $(patsubst %,$(INCLUDES_DIR)/%.skel.h,$(BPF_PROGS))
 
-#--- User-space code --- 
+#--- User-space code ---
 
-go_env := GOOS=linux GOARCH=$(ARCH:x86_64=amd64) CGO_CFLAGS="-I $(INCLUDES_DIR)" CGO_LDFLAGS="$(abspath $(LIBBPF_OBJ)) -lelf -lz"
+go_env := GOOS=linux GOARCH=$(ARCH:x86_64=amd64) CGO_CFLAGS="-I $(INCLUDES_DIR) -Wno-implicit-function-declaration" CGO_LDFLAGS="$(abspath $(LIBBPF_OBJ)) -lelf -lz"
 
-$(TOOL): $(INCLUDES_DIR)/$(LIB_NAME).skel.h $(LIBBPF_OBJ) $(filter-out *_test.go,$(GO_SRC))
+$(TOOL): bpf $(LIBBPF_OBJ) $(filter-out *_test.go,$(GO_SRC))
 	$(call msg,BINARY,$@)
 	@$(go_env) go build -mod vendor ./tools/$@
 
 .PHONY: test
-test: $(INCLUDES_DIR)/$(LIB_NAME).skel.h $(LIBBPF_OBJ)
+test: bpf $(LIBBPF_OBJ)
 	$(call msg,TEST)
 	@$(go_env) $(SUDO) $(GO) test -v .
 
