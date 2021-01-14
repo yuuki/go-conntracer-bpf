@@ -17,7 +17,7 @@ INCLUDES := -I$(OUTPUT) -I$(INCLUDES_DIR)
 CFLAGS := -g -Wall
 ARCH_UNAME := $(shell uname -m)
 ARCH ?= $(ARCH_UNAME:aarch64=arm64)
-DEBUG ?= 1
+DEBUG ?= 0
 
 BPF_PROGS = conntracer conntracer_without_aggr
 
