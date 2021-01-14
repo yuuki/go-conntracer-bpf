@@ -12,19 +12,19 @@ import (
 )
 
 var interval time.Duration
-var noAggr bool
+var streaming bool
 
 func init() {
 	log.SetFlags(0)
 
 	flag.DurationVar(&interval, "interval", 3*time.Second, "polling interval (default 3s)")
-	flag.BoolVar(&noAggr, "noaggr", false, "without aggregation (default false)")
+	flag.BoolVar(&streaming, "streaming", false, "without aggregation (default false)")
 	flag.Parse()
 }
 
 func main() {
-	if noAggr {
-		startWithoutAggr()
+	if streaming {
+		runStreaming()
 		return
 	}
 
@@ -78,7 +78,7 @@ func main() {
 	log.Printf("Received %v, Goodbye\n", ret)
 }
 
-func startWithoutAggr() {
+func runStreaming() {
 	t, err := conntracer.NewTracerWithoutAggr()
 	if err != nil {
 		log.Println(err)
