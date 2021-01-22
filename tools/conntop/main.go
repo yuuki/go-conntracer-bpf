@@ -86,7 +86,7 @@ func runStreaming() {
 	}
 	defer t.Close()
 
-	flowChan := make(chan *conntracer.Flow)
+	flowChan := make(chan *conntracer.Flow, 10)
 	go t.Start(flowChan)
 
 	printFlow := func(flow *conntracer.Flow) {
