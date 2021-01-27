@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"sync"
 	"time"
 
 	conntracer "github.com/yuuki/go-conntracer-bpf"
@@ -78,6 +79,12 @@ func main() {
 	log.Printf("Received %v, Goodbye\n", ret)
 }
 
+type connAggrTuple struct {
+	SAddr string
+	DAddr string
+	LPort uint16
+}
+
 func runStreaming() {
 	t, err := conntracer.NewTracerWithoutAggr()
 	if err != nil {
@@ -86,7 +93,7 @@ func runStreaming() {
 	}
 	defer t.Close()
 
-	flowChan := make(chan *conntracer.Flow, 10)
+	flowChan := make(chan *conntracer.Flow, 1)
 	go t.Start(flowChan)
 
 	printFlow := func(flow *conntracer.Flow) {
@@ -106,10 +113,30 @@ func runStreaming() {
 	// print header
 	fmt.Printf("%-25s %-25s %-20s %-10s %-10s\n", "LADDR", "RADDR", "LPORT", "PID", "COMM")
 
+	var aggrFlows sync.Map
+
+	// polling aggrFlows
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				aggrFlows.Range(func(key, value interface{}) bool {
+					printFlow(value.(*conntracer.Flow))
+					aggrFlows.Delete(key)
+					return true
+				})
+			}
+		}
+	}()
+
 	for {
 		select {
 		case flow := <-flowChan:
-			printFlow(flow)
+			tuple := connAggrTuple{SAddr: flow.SAddr.String(), DAddr: flow.DAddr.String(), LPort: flow.LPort}
+			aggrFlows.Store(tuple, flow)
 		case ret := <-sig:
 			log.Printf("Received %v, Goodbye\n", ret)
 			return
