@@ -166,7 +166,7 @@ func dumpFlows(fd C.int) ([]*Flow, error) {
 		n = batchSize
 		ret, err = C.bpf_map_lookup_and_delete_batch(fd, pKey, pNextKey,
 			unsafe.Pointer(uintptr(ckeys)+uintptr(nRead*C.sizeof_struct_ipv4_flow_key)),
-			unsafe.Pointer(uintptr(cvalues)+uintptr(nRead*C.sizeof_struct_ipv4_flow_key)),
+			unsafe.Pointer(uintptr(cvalues)+uintptr(nRead*C.sizeof_struct_flow)),
 			&n, opts)
 		if err != nil && err != syscall.Errno(syscall.ENOENT) {
 			return nil, fmt.Errorf("Error bpf_map_lookup_and_delete_batch, fd:%d, ret:%d, %s", fd, ret, err)
