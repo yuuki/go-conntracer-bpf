@@ -19,6 +19,7 @@ struct ipv4_flow_key {
 	__u32 daddr;
 	__u16 lport;				// listening port
 	flow_direction direction; 	// 0x10: "connect"(active), 0x20: "accept"(passive)
+	__u8 l4_proto;           	// sk_protocol such as IPPRPTO_TCP, IPPROTO_UDP
 };
 
 struct ipv6_flow_key {
