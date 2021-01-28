@@ -62,7 +62,7 @@ $(INCLUDES_DIR)/%.skel.h: $(OUTPUT)/%.bpf.o | $(OUTPUT)
 	$(call msg,GEN-SKEL,$@)
 	@$(BPFTOOL) gen skeleton $< > $@
 
-.PHONY: bpf
+.PHONY: goclean bpf
 bpf: $(patsubst %,$(INCLUDES_DIR)/%.skel.h,$(BPF_PROGS))
 
 #--- User-space code ---
@@ -90,9 +90,12 @@ tidy:
 	@go mod vendor
 
 .PHONY: clean
-clean:
+clean: goclean
 	$(call msg,CLEAN)
 	@rm -rf $(OUTPUT) $(TOOL)
+
+.PNONY: goclean
+goclean:
 	@go clean -x -cache -testcache >/dev/null
 
 # delete failed targets
