@@ -62,8 +62,8 @@ $(INCLUDES_DIR)/%.skel.h: $(OUTPUT)/%.bpf.o | $(OUTPUT)
 	$(call msg,GEN-SKEL,$@)
 	@$(BPFTOOL) gen skeleton $< > $@
 
-.PHONY: goclean bpf
-bpf: $(patsubst %,$(INCLUDES_DIR)/%.skel.h,$(BPF_PROGS))
+.PHONY: bpf
+bpf: goclean $(patsubst %,$(INCLUDES_DIR)/%.skel.h,$(BPF_PROGS))
 
 #--- User-space code ---
 
