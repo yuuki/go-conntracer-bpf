@@ -8,6 +8,7 @@ package conntracer
 
 #include <stddef.h>
 
+#include "conntracer.skel.h"
 #include "conntracer.h"
 
 int handleFlow(void *ctx, void *data, size_t data_sz);

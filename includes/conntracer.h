@@ -1,8 +1,6 @@
 #ifndef __CONNTRACER_H
 #define __CONNTRACER_H
 
-#include <linux/types.h>
-
 /* The maximum number of items in maps */
 #define MAX_ENTRIES 8192
 #define MAX_FLOW_ENTRIES 4096
