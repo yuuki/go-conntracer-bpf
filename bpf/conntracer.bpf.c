@@ -159,6 +159,20 @@ int BPF_KRETPROBE(inet_csk_accept_ret, struct sock *sk)
 	return 0;
 }
 
+SEC("kprobe/udp_sendmsg")
+int BPF_KPROBE(udp_sendmsg, struct sock *sk) {
+	__u64 pid_tgid = bpf_get_current_pid_tgid();
+	__u32 pid = pid_tgid >> 32;
+	__u16 lport;
+
+	BPF_CORE_READ_INTO(&lport, sk, __sk_common.skc_dport);
+
+	insert_udp_flows(pid, sk, lport, FLOW_ACTIVE);
+
+	log_debug("kprobe/udp_sendmsg: pid_tgid: %d, lport: %d\n", pid_tgid, lport);
+	return 0;
+}
+
 SEC("kprobe/udp_recvmsg")
 int BPF_KPROBE(udp_recvmsg, struct sock *sk) {
     __u64 pid_tgid = bpf_get_current_pid_tgid();
@@ -181,7 +195,7 @@ int BPF_KRETPROBE(udp_recvmsg_ret, int ret) {
 	}
     struct sock* sk = *skpp;
 
-	BPF_CORE_READ_INTO(&lport, sk, __sk_common.skc_num);
+	BPF_CORE_READ_INTO(&lport, sk, __sk_common.skc_dport);
 
 	insert_udp_flows(pid, sk, lport, FLOW_PASSIVE);
 
