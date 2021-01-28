@@ -45,9 +45,9 @@ func main() {
 		for _, flow := range flows {
 			switch flow.Direction {
 			case conntracer.FlowActive:
-				fmt.Printf("%-25s %-25s %-20d %-10d %-10d\n", flow.SAddr, flow.DAddr, flow.LPort, flow.LastPID, flow.Stat.NewConnections)
+				fmt.Printf("%-25s %-25s %-20d %-10d %-20s %-10d\n", flow.SAddr, flow.DAddr, flow.LPort, flow.LastPID, flow.ProcessName, flow.Stat.NewConnections)
 			case conntracer.FlowPassive:
-				fmt.Printf("%-25s %-25s %-20d %-10d %-10d\n", flow.DAddr, flow.SAddr, flow.LPort, flow.LastPID, flow.Stat.NewConnections)
+				fmt.Printf("%-25s %-25s %-20d %-10d %-20s %-10d\n", flow.DAddr, flow.SAddr, flow.LPort, flow.LastPID, flow.ProcessName, flow.Stat.NewConnections)
 			default:
 				log.Printf("wrong direction '%d'\n", flow.Direction)
 			}
@@ -58,7 +58,7 @@ func main() {
 	signal.Notify(sig, os.Interrupt, os.Kill)
 	log.Printf("Waiting interval %s for flows to be collected...\n", interval)
 	// print header
-	fmt.Printf("%-25s %-25s %-20s %-10s %-10s\n", "LADDR", "RADDR", "LPORT", "PID", "CONNECTIONS")
+	fmt.Printf("%-25s %-25s %-20s %-10s %-20s %-10s\n", "LADDR", "RADDR", "LPORT", "PID", "COMM", "CONNECTIONS")
 
 	stopChan := make(chan struct{})
 	go func() {
