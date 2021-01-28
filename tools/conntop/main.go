@@ -48,6 +48,8 @@ func main() {
 				fmt.Printf("%-25s %-25s %-20d %-10d %-10d\n", flow.SAddr, flow.DAddr, flow.LPort, flow.LastPID, flow.Stat.NewConnections)
 			case conntracer.FlowPassive:
 				fmt.Printf("%-25s %-25s %-20d %-10d %-10d\n", flow.DAddr, flow.SAddr, flow.LPort, flow.LastPID, flow.Stat.NewConnections)
+			default:
+				log.Printf("wrong direction '%d'\n", flow.Direction)
 			}
 		}
 	}
