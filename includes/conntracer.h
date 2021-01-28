@@ -1,6 +1,8 @@
 #ifndef __CONNTRACER_H
 #define __CONNTRACER_H
 
+#include <bpf/bpf.h>
+
 /* The maximum number of items in maps */
 #define MAX_ENTRIES 8192
 #define MAX_FLOW_ENTRIES 4096
@@ -43,6 +45,7 @@ struct flow {
 	__u16 lport;  				// listening port
 	flow_direction direction; 	// 1: "connect"(active), 2: "accept"(passive)
 	__u32 pid;
+	__u8 l4_proto;
 	struct flow_stat stat;
 };
 
