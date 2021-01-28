@@ -50,6 +50,7 @@ insert_flows(pid_t pid, struct sock *sk, __u16 lport, __u8 direction)
 	BPF_CORE_READ_INTO(&flow->saddr, sk, __sk_common.skc_rcv_saddr);
 	BPF_CORE_READ_INTO(&flow->daddr, sk, __sk_common.skc_daddr);
 	flow->lport = lport;
+	flow->pid = pid;
 	flow->direction = direction;
 	bpf_get_current_comm(&flow->task, sizeof(flow->task));
 
