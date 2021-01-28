@@ -133,9 +133,9 @@ int BPF_KRETPROBE(tcp_v4_connect_ret, int ret)
 
 	insert_flows(pid, sk, dport, FLOW_ACTIVE);
 
+	log_debug("kretprobe/tcp_v4_connect: pid_tgid:%d, dport:%d\n", pid_tgid, dport);
 end:
 	bpf_map_delete_elem(&sockets, &tid);
-	log_debug("kretprobe/tcp_v4_connect: pid_tgid:%d, dport:%d\n", pid_tgid, dport);
 	return 0;
 }
 
@@ -179,14 +179,11 @@ int BPF_KRETPROBE(udp_recvmsg_ret, int ret) {
 	}
     struct sock* sk = *skpp;
 
-	if (ret)
-		goto end;
-
 	BPF_CORE_READ_INTO(&lport, sk, __sk_common.skc_num);
 
 	insert_udp_flows(pid, sk, lport, FLOW_PASSIVE);
 
-    log_debug("kretprobe/udp_recvmsg: pid_tgid: %d, return: %d\n", pid_tgid, copied);
+    log_debug("kretprobe/udp_recvmsg: pid_tgid: %d\n", pid_tgid);
 end:
 	bpf_map_delete_elem(&udp_recv_sock, &pid_tgid);
     return 0;
