@@ -87,13 +87,14 @@ insert_udp_flows(pid_t pid, struct sock *sk, __u16 lport, __u8 direction)
 	BPF_CORE_READ_INTO(&flow.daddr, sk, __sk_common.skc_daddr);
 	flow.lport = lport;
 	flow.direction = direction;
+	flow.l4_proto = IPPROTO_UDP;
 	bpf_get_current_comm(flow.task, sizeof(flow.task));
 
 	flow_key.saddr = flow.saddr;
 	flow_key.daddr = flow.daddr;
 	flow_key.lport = flow.lport;
 	flow_key.direction = flow.direction;
-	flow_key.l4_proto = IPPROTO_UDP;
+	flow_key.l4_proto = flow.l4_proto;
 
 	bpf_map_update_elem(&flows, &flow_key, &flow, BPF_ANY);
 }
