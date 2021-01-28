@@ -37,7 +37,7 @@ type FlowDirection uint8
 
 const (
 	// FlowUnknown are unknown flow.
-	FlowUnknown FlowDirection = 1 << iota
+	FlowUnknown FlowDirection = iota + 1
 	// FlowActive are 'active open'.
 	FlowActive
 	// FlowPassive are 'passive open'
@@ -47,6 +47,18 @@ const (
 	defaultFlowMapOpsBatchSize = 10
 )
 
+func flowDirectionFrom(x C.flow_direction) FlowDirection {
+	switch x {
+	case C.FLOW_UNKNOWN:
+		return FlowUnknown
+	case C.FLOW_ACTIVE:
+		return FlowActive
+	case C.FLOW_PASSIVE:
+		return FlowPassive
+	}
+	return FlowUnknown
+}
+
 // Flow is a bunch of aggregated connections group by listening port.
 type Flow struct {
 	SAddr       *net.IP
@@ -55,6 +67,7 @@ type Flow struct {
 	LPort       uint16 // Listening port
 	Direction   FlowDirection
 	LastPID     uint32
+	L4Proto     uint8
 	Stat        *FlowStat
 }
 
@@ -187,7 +200,8 @@ func dumpFlows(fd C.int) ([]*Flow, error) {
 			DAddr:       &daddr,
 			ProcessName: C.GoString((*C.char)(unsafe.Pointer(&values[i].task))),
 			LPort:       ntohs((uint16)(values[i].lport)),
-			Direction:   FlowDirection((uint8)(values[i].direction)),
+			Direction:   flowDirectionFrom((C.flow_direction)(values[i].direction)),
+			L4Proto:     (uint8)(ntohs((uint16)(values[i].l4_proto))),
 			LastPID:     (uint32)(values[i].pid),
 			Stat: &FlowStat{
 				NewConnections: (uint32)(values[i].stat.connections),
