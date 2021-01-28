@@ -1,7 +1,7 @@
 #ifndef __CONNTRACER_H
 #define __CONNTRACER_H
 
-#include <bpf/bpf.h>
+#include <linux/types.h>
 
 /* The maximum number of items in maps */
 #define MAX_ENTRIES 8192
