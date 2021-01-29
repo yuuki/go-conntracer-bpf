@@ -45,6 +45,8 @@ const (
 
 	// defaultFlowMapOpsBatchSize is batch size of BPF map(flows) lookup_and_delete.
 	defaultFlowMapOpsBatchSize = 10
+
+	populateListeningPortsInterval = 5 * time.Second
 )
 
 func flowDirectionFrom(x C.flow_direction) FlowDirection {
@@ -78,8 +80,9 @@ type FlowStat struct {
 
 // Tracer is an object for state retention.
 type Tracer struct {
-	obj      *C.struct_conntracer_bpf
-	stopChan chan struct{}
+	obj                    *C.struct_conntracer_bpf
+	stopChan               chan struct{}
+	stopPopulateLPortsChan chan struct{}
 
 	// option
 	batchSize int
@@ -102,12 +105,11 @@ func NewTracer() (*Tracer, error) {
 		return nil, fmt.Errorf("failed to attach BPF programs: %v", C.strerror(-cerr))
 	}
 
-	stopChan := make(chan struct{})
-
 	t := &Tracer{
-		obj:       obj,
-		stopChan:  stopChan,
-		batchSize: defaultFlowMapOpsBatchSize,
+		obj:                    obj,
+		stopChan:               make(chan struct{}),
+		stopPopulateLPortsChan: make(chan struct{}),
+		batchSize:              defaultFlowMapOpsBatchSize,
 	}
 	return t, nil
 }
@@ -115,17 +117,20 @@ func NewTracer() (*Tracer, error) {
 // Close closes tracer.
 func (t *Tracer) Close() {
 	close(t.stopChan)
+	close(t.stopPopulateLPortsChan)
 	C.conntracer_bpf__destroy(t.obj)
 }
 
 // Start starts polling loop.
 func (t *Tracer) Start(cb func([]*Flow) error, interval time.Duration) {
 	go t.pollFlows(cb, interval)
+	go t.populateListeningPorts()
 }
 
 // Stop stops polling loop.
 func (t *Tracer) Stop() {
 	t.stopChan <- struct{}{}
+	t.stopPopulateLPortsChan <- struct{}{}
 }
 
 // DumpFlows gets and deletes all flows.
@@ -211,4 +216,24 @@ func dumpFlows(fd C.int) ([]*Flow, error) {
 	}
 
 	return flows, nil
+}
+
+// populateListeningPorts updates local listening ports mapping periodically.
+func (t *Tracer) populateListeningPorts() {
+	tick := time.NewTicker(populateListeningPortsInterval)
+	defer tick.Stop()
+
+	for {
+		select {
+		case <-t.stopPopulateLPortsChan:
+			return
+		case <-tick.C:
+			udpPorts, err := getLocalListeningPorts(syscall.IPPROTO_UDP)
+			if err != nil {
+				log.Println(err)
+				continue
+			}
+			log.Println(udpPorts)
+		}
+	}
 }
