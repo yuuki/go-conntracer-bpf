@@ -36,12 +36,7 @@ func main() {
 	}
 	defer t.Close()
 
-	printFlows := func() {
-		flows, err := t.DumpFlows()
-		if err != nil {
-			log.Printf("could not dump flows: %v", err)
-			return
-		}
+	printFlow := func(flows []*conntracer.Flow) error {
 		for _, flow := range flows {
 			switch flow.Direction {
 			case conntracer.FlowActive:
@@ -52,7 +47,10 @@ func main() {
 				log.Printf("wrong direction '%d'\n", flow.Direction)
 			}
 		}
+		return nil
 	}
+
+	t.Start(printFlow, interval)
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, os.Kill)
@@ -60,23 +58,8 @@ func main() {
 	// print header
 	fmt.Printf("%-25s %-25s %-20s %-10s %-20s %-10s\n", "LADDR", "RADDR", "LPORT", "PID", "COMM", "CONNECTIONS")
 
-	stopChan := make(chan struct{})
-	go func() {
-		tick := time.NewTicker(interval)
-		printFlows()
-		for {
-			select {
-			case <-tick.C:
-				printFlows()
-			case <-stopChan:
-				tick.Stop()
-				return
-			}
-		}
-	}()
-
 	ret := <-sig
-	stopChan <- struct{}{}
+	t.Stop()
 
 	log.Printf("Received %v, Goodbye\n", ret)
 }
