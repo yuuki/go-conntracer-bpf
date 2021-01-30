@@ -14,6 +14,7 @@ import (
 	// Put the C header files into Go module management
 	_ "github.com/yuuki/go-conntracer-bpf/includes"
 	_ "github.com/yuuki/go-conntracer-bpf/includes/bpf"
+	"golang.org/x/xerrors"
 )
 
 /*
@@ -23,6 +24,7 @@ import (
 #include <sys/resource.h>
 #include <arpa/inet.h>
 #include <errno.h>
+#include <unistd.h>
 
 #include <bpf/libbpf.h>
 #include <bpf/bpf.h>
@@ -142,6 +144,10 @@ func (t *Tracer) flowsMapFD() C.int {
 	return C.bpf_map__fd(t.obj.maps.flows)
 }
 
+func (t *Tracer) listeningPortsMapFD() C.int {
+	return C.bpf_map__fd(t.obj.maps.listening_ports)
+}
+
 func (t *Tracer) pollFlows(cb func([]*Flow) error, interval time.Duration) {
 	tick := time.NewTicker(interval)
 	defer tick.Stop()
@@ -233,7 +239,66 @@ func (t *Tracer) populateListeningPorts() {
 				log.Println(err)
 				continue
 			}
-			log.Println(udpPorts)
+			if err := t.replaceListeningPortsMap(udpPorts); err != nil {
+				log.Println(err)
+				continue
+			}
 		}
 	}
+}
+
+func (t *Tracer) replaceListeningPortsMap(ports []uint16) error {
+	mapName := C.CString("inner_listening_ports")
+	defer C.free(unsafe.Pointer(mapName))
+	innerMapFD, err := C.bpf_create_map_name(
+		C.BPF_MAP_TYPE_HASH,                 // type
+		mapName,                             // name
+		C.sizeof_struct_listening_ports_key, // key size
+		C.sizeof___u8,                       // value size
+		C.MAX_ENTRIES,                       // max_entries
+		0,
+	)
+	if err != nil {
+		return xerrors.Errorf("could not create inner listening ports map: %w", err)
+	}
+	defer C.close(innerMapFD)
+
+	ckeys := unsafe.Pointer(&ports[0])
+	values := make([]uint8, 0, len(ports))
+	cvalues := unsafe.Pointer(&values[0])
+	count := (C.uint)(len(ports))
+	opts := &C.struct_bpf_map_batch_opts{
+		elem_flags: 0,
+		flags:      0,
+		sz:         C.sizeof_struct_bpf_map_batch_opts,
+	}
+
+	_, err = C.bpf_map_update_batch(innerMapFD, ckeys, cvalues, &count, opts)
+	if err != nil {
+		return xerrors.Errorf("could not update inner listening ports map: %w", err)
+	}
+
+	var oldMapID C.uint
+	outerKey := C.LATEST_LISTENING_PORTS
+	ret := C.bpf_map_lookup_elem(
+		t.listeningPortsMapFD(), unsafe.Pointer(&outerKey), unsafe.Pointer(&oldMapID))
+	if ret != 0 {
+		return xerrors.Errorf("could not lookup older inner listening ports map: %w", ret)
+	}
+	oldMapFD, err := C.bpf_map_get_fd_by_id(oldMapID)
+	if err != nil {
+		return xerrors.Errorf("could not get older inner listening ports map fd: %w", err)
+	}
+
+	ret = C.bpf_map_update_elem(
+		t.listeningPortsMapFD(), unsafe.Pointer(&outerKey),
+		unsafe.Pointer(&innerMapFD), C.BPF_ANY)
+	if ret != 0 {
+		return xerrors.Errorf("could not update outer listening ports map: ret:%d", ret)
+	}
+
+	// Delete old inner MAP
+	C.close(oldMapFD)
+
+	return nil
 }
