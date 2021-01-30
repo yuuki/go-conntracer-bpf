@@ -65,6 +65,10 @@ $(INCLUDES_DIR)/%.skel.h: $(OUTPUT)/%.bpf.o | $(OUTPUT)
 .PHONY: bpf
 bpf: goclean $(patsubst %,$(INCLUDES_DIR)/%.skel.h,$(BPF_PROGS))
 
+.PHONY: bpf/clean
+bpf/clean:
+	rm -f $(OUTPUT)/*.bpf.o includes/*.skel.h
+
 #--- User-space code ---
 
 go_env := GOOS=linux GOARCH=$(ARCH:x86_64=amd64) CGO_CFLAGS="-I $(INCLUDES_DIR) -Wno-implicit-function-declaration" CGO_LDFLAGS="$(abspath $(LIBBPF_OBJ)) -lelf -lz"
