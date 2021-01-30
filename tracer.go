@@ -123,8 +123,10 @@ func (t *Tracer) Close() {
 }
 
 // Start starts polling loop.
-func (t *Tracer) Start(cb func([]*Flow) error, interval time.Duration) {
-	t.initializeUDPPortBindingMap()
+func (t *Tracer) Start(cb func([]*Flow) error, interval time.Duration) error {
+	if err := t.initializeUDPPortBindingMap(); err != nil {
+		return err
+	}
 	go t.pollFlows(cb, interval)
 }
 

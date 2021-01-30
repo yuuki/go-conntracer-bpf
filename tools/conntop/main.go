@@ -50,7 +50,10 @@ func main() {
 		return nil
 	}
 
-	t.Start(printFlow, interval)
+	if err := t.Start(printFlow, interval); err != nil {
+		log.Println(err)
+		return nil
+	}
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, os.Kill)
