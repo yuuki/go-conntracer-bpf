@@ -229,6 +229,10 @@ func (t *Tracer) initializeUDPPortBindingMap() error {
 		return err
 	}
 
+	keys := make([]C.struct_port_binding_key, len(ports))
+	for i := range keys {
+		keys[i].port = (C.ushort)(ports[i])
+	}
 	values := make([]uint32, len(ports))
 	for i := range values {
 		values[i] = C.PORT_LISTENING
