@@ -48,24 +48,6 @@ struct {
 	__uint(map_flags, BPF_F_NO_PREALLOC);
 } flows SEC(".maps");
 
-struct inner_listening_ports {
-	__uint(type, BPF_MAP_TYPE_HASH);
-	__uint(key_size, sizeof(struct listening_ports_key));
-	__type(value, __u8);
-	__uint(max_entries, MAX_ENTRIES);
-} inner_ports SEC(".maps");
-
-// listening_ports MAP is a outer MAP for replacing inner MAP
-// storing current snapshots of local listening ports into newer one
-// with short blocking time and atomicity.
-// This map is operated in user space program and is read-only from kernel space.
-struct {
-	__uint(type, BPF_MAP_TYPE_HASH_OF_MAPS);
-	__uint(max_entries, 1);
-	__type(key, __u8);
-	__array(values, struct inner_listening_ports);
-} listening_ports SEC(".maps");
-
 static __always_inline void
 insert_flows(pid_t pid, struct sock *sk, __u16 lport, __u8 direction)
 {
@@ -96,32 +78,6 @@ insert_flows(pid_t pid, struct sock *sk, __u16 lport, __u8 direction)
 	bpf_map_update_elem(&flows, &flow_key, &flow, BPF_ANY);
 }
 
-static __always_inline __u8
-detect_flow_direction(__u8 protocol, __u16 local_port)
-{
-	int ret;
-	void *inner_map;
-	__u8 *val, outer_key;
-	struct listening_ports_key key = {
-		.l4_proto = protocol,
-		.port = local_port,
-	};
-
-	outer_key = LATEST_LISTENING_PORTS;
-	inner_map = bpf_map_lookup_elem(&listening_ports, &outer_key);
-	if (!inner_map) {
-		// not reachable
-		return FLOW_UNKNOWN;
-	}
-
-	val = bpf_map_lookup_elem(inner_map, &key);
-	if (val) {
-		return FLOW_PASSIVE;
-	}
-	// local_port not found in the map.
-	return FLOW_ACTIVE;
-}
-
 static __always_inline void
 insert_udp_flows(pid_t pid, struct sock *sk, __u16 lport, __u8 direction)
 {
@@ -132,7 +88,7 @@ insert_udp_flows(pid_t pid, struct sock *sk, __u16 lport, __u8 direction)
 	BPF_CORE_READ_INTO(&flow.daddr, sk, __sk_common.skc_daddr);
 	flow.lport = lport;
 	flow.pid = pid;
-	flow.direction = detect_flow_direction(IPPROTO_UDP, lport);
+	flow.direction = direction;
 	flow.l4_proto = IPPROTO_UDP;
 	bpf_get_current_comm(flow.task, sizeof(flow.task));
 
