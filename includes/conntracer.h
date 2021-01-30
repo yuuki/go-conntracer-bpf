@@ -4,6 +4,7 @@
 /* The maximum number of items in maps */
 #define MAX_ENTRIES 8192
 #define MAX_FLOW_ENTRIES 4096
+#define MAX_PORT_BINDING_ENTRIES 65535
 
 #define TASK_COMM_LEN 16
 
@@ -47,6 +48,11 @@ struct flow {
 	struct flow_stat stat;
 };
 
+struct bind_args {
+    __u16 port;
+    __u64 fd;
+};
+
 enum {
 	PORT_CLOSED = 0,
 	PORT_LISTENING = 1,
@@ -55,7 +61,5 @@ enum {
 struct port_binding_key {
  	__u16 port;
 };
-
-#define MAX_PORT_BINDING_ENTRIES 65535
 
 #endif /* __CONNTRACER_H */
