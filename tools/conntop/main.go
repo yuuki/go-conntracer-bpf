@@ -52,12 +52,13 @@ func main() {
 
 	if err := t.Start(printFlow, interval); err != nil {
 		log.Println(err)
-		return nil
+		return
 	}
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, os.Kill)
 	log.Printf("Waiting interval %s for flows to be collected...\n", interval)
+
 	// print header
 	fmt.Printf("%-25s %-25s %-20s %-10s %-20s %-10s\n", "LADDR", "RADDR", "LPORT", "PID", "COMM", "CONNECTIONS")
 
