@@ -48,6 +48,17 @@ struct {
 	__uint(map_flags, BPF_F_NO_PREALLOC);
 } flows SEC(".maps");
 
+// udp_port_binding is a map for tracking LISNING or CLOSED ports.
+// udp_port_binding enables to register entire local ports and 
+// insert or update the port number and state at the timing when the port state changes.
+struct {
+	__uint(type, BPF_MAP_TYPE_HASH);
+	__uint(max_entries, MAX_PORT_BINDING_ENTRIES);
+	__uint(map_flags, BPF_F_NO_PREALLOC);
+	__type(key, struct port_binding_key);
+	__type(value, __u32);		// protocol state
+} udp_port_binding SEC(".maps");
+
 static __always_inline void
 insert_flows(pid_t pid, struct sock *sk, __u16 lport, __u8 direction)
 {

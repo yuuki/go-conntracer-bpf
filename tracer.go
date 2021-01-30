@@ -14,6 +14,7 @@ import (
 	// Put the C header files into Go module management
 	_ "github.com/yuuki/go-conntracer-bpf/includes"
 	_ "github.com/yuuki/go-conntracer-bpf/includes/bpf"
+	"golang.org/x/xerrors"
 )
 
 /*
@@ -123,8 +124,8 @@ func (t *Tracer) Close() {
 
 // Start starts polling loop.
 func (t *Tracer) Start(cb func([]*Flow) error, interval time.Duration) {
+	t.initializeUDPPortBindingMap()
 	go t.pollFlows(cb, interval)
-	go t.populateListeningPorts()
 }
 
 // Stop stops polling loop.
@@ -140,6 +141,10 @@ func (t *Tracer) DumpFlows() ([]*Flow, error) {
 
 func (t *Tracer) flowsMapFD() C.int {
 	return C.bpf_map__fd(t.obj.maps.flows)
+}
+
+func (t *Tracer) udpPortBindingMapFD() C.int {
+	return C.bpf_map__fd(t.obj.maps.udp_port_binding)
 }
 
 func (t *Tracer) pollFlows(cb func([]*Flow) error, interval time.Duration) {
@@ -218,22 +223,31 @@ func dumpFlows(fd C.int) ([]*Flow, error) {
 	return flows, nil
 }
 
-// populateListeningPorts updates local listening ports mapping periodically.
-func (t *Tracer) populateListeningPorts() {
-	tick := time.NewTicker(populateListeningPortsInterval)
-	defer tick.Stop()
-
-	for {
-		select {
-		case <-t.stopPopulateLPortsChan:
-			return
-		case <-tick.C:
-			udpPorts, err := getLocalListeningPorts(syscall.IPPROTO_UDP)
-			if err != nil {
-				log.Println(err)
-				continue
-			}
-			log.Println(udpPorts)
-		}
+func (t *Tracer) initializeUDPPortBindingMap() error {
+	ports, err := getLocalListeningPorts(syscall.IPPROTO_UDP)
+	if err != nil {
+		return err
 	}
+
+	values := make([]uint32, len(ports))
+	for i := range values {
+		values[i] = C.PORT_LISTENING
+	}
+	count := (C.uint)(len(ports))
+	opts := &C.struct_bpf_map_batch_opts{
+		elem_flags: C.BPF_ANY,
+		flags:      0,
+		sz:         C.sizeof_struct_bpf_map_batch_opts,
+	}
+	ret := C.bpf_map_update_batch(
+		t.udpPortBindingMapFD(),
+		unsafe.Pointer(&ports[0]),  // keys
+		unsafe.Pointer(&values[0]), // values
+		&count,
+		opts)
+	if ret != 0 {
+		return xerrors.Errorf("could not update port_bindings map: ret:%d", ret)
+	}
+
+	return nil
 }

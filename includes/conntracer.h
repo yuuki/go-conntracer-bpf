@@ -47,4 +47,15 @@ struct flow {
 	struct flow_stat stat;
 };
 
+enum {
+	PORT_CLOSED = 0,
+	PORT_LISTENING = 1,
+};
+
+struct port_binding_key {
+ 	__u16 port;
+};
+
+#define MAX_PORT_BINDING_ENTRIES 65535
+
 #endif /* __CONNTRACER_H */
