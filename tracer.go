@@ -46,8 +46,6 @@ const (
 
 	// defaultFlowMapOpsBatchSize is batch size of BPF map(flows) lookup_and_delete.
 	defaultFlowMapOpsBatchSize = 10
-
-	populateListeningPortsInterval = 5 * time.Second
 )
 
 func flowDirectionFrom(x C.flow_direction) FlowDirection {
@@ -81,9 +79,8 @@ type FlowStat struct {
 
 // Tracer is an object for state retention.
 type Tracer struct {
-	obj                    *C.struct_conntracer_bpf
-	stopChan               chan struct{}
-	stopPopulateLPortsChan chan struct{}
+	obj      *C.struct_conntracer_bpf
+	stopChan chan struct{}
 
 	// option
 	batchSize int
@@ -107,10 +104,9 @@ func NewTracer() (*Tracer, error) {
 	}
 
 	t := &Tracer{
-		obj:                    obj,
-		stopChan:               make(chan struct{}),
-		stopPopulateLPortsChan: make(chan struct{}),
-		batchSize:              defaultFlowMapOpsBatchSize,
+		obj:       obj,
+		stopChan:  make(chan struct{}),
+		batchSize: defaultFlowMapOpsBatchSize,
 	}
 	return t, nil
 }
@@ -118,7 +114,6 @@ func NewTracer() (*Tracer, error) {
 // Close closes tracer.
 func (t *Tracer) Close() {
 	close(t.stopChan)
-	close(t.stopPopulateLPortsChan)
 	C.conntracer_bpf__destroy(t.obj)
 }
 
@@ -134,7 +129,6 @@ func (t *Tracer) Start(cb func([]*Flow) error, interval time.Duration) error {
 // Stop stops polling loop.
 func (t *Tracer) Stop() {
 	t.stopChan <- struct{}{}
-	t.stopPopulateLPortsChan <- struct{}{}
 }
 
 // DumpFlows gets and deletes all flows.
