@@ -128,6 +128,7 @@ func (t *Tracer) Start(cb func([]*Flow) error, interval time.Duration) error {
 		return err
 	}
 	go t.pollFlows(cb, interval)
+	return nil
 }
 
 // Stop stops polling loop.
