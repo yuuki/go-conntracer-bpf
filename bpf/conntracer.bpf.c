@@ -6,6 +6,7 @@
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_tracing.h>
 #include <bpf/bpf_core_read.h>
+#include <bpf/bpf_endian.h>
 
 #include "conntracer.h"
 
@@ -304,7 +305,7 @@ int tracepoint__syscalls__sys_enter_bind(struct trace_event_raw_sys_enter* ctx) 
 	int fd = (int)ctx->args[0];
 	const struct sockaddr *addr = (const struct sockaddr *)ctx->args[1];
 
-    log_debug("tp/sys_enter_bind: fd=%u, umyaddr=%x, tid=%u\n", fd, addr, tid);
+    log_debug("tp/sys_enter_bind: fd=%u, addr=%x, tid=%u\n", fd, addr, tid);
 
 	if (!addr) {
         return 0;
@@ -317,17 +318,19 @@ int tracepoint__syscalls__sys_enter_bind(struct trace_event_raw_sys_enter* ctx) 
         return 0;
     }
 
-    u16 sin_port = 0;
+    __u16 sin_port = 0;
     sa_family_t family = 0;
-    bpf_core_read(&family, sizeof(sa_family_t), &addr->sa_family);
+    bpf_probe_read(&family, sizeof(sa_family_t), &addr->sa_family);
     if (family == AF_INET) {
-        bpf_core_read(&sin_port, sizeof(u16), &(((struct sockaddr_in*)addr)->sin_port));
+        bpf_probe_read(&sin_port, sizeof(u16), &(((struct sockaddr_in*)addr)->sin_port));
     } else if (family == AF_INET6) {
-        bpf_core_read(&sin_port, sizeof(u16), &(((struct sockaddr_in6*)addr)->sin6_port));
+        bpf_probe_read(&sin_port, sizeof(u16), &(((struct sockaddr_in6*)addr)->sin6_port));
     }
 
+    sin_port = bpf_ntohs(sin_port);
     if (sin_port == 0) {
-        return 0;
+		log_debug("sys_enter_bind: sin_port == 0, family:%d, tid=%u\n", family, tid);
+		return 0;
     }
 
 	struct bind_args args = {};
