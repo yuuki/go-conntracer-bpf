@@ -243,9 +243,11 @@ end:
 // for tracking UDP listening state
 SEC("tracepoint/syscalls/sys_enter_socket")
 int tracepoint__syscalls__sys_enter_socket(struct trace_event_raw_sys_enter* ctx) {
+	__u64 tid = bpf_get_current_pid_tgid();
 	int family = (int)ctx->args[0];
 	int type = (int)ctx->args[1];
-	log_debug("tp/sys_enter_socket: family=%u, type=%u\n", family, type);
+
+	log_debug("tp/sys_enter_socket: family=%u, type=%u, tid=%u\n", family, type, tid);
 
 	// detect if protocol is udp or not.
     if ((family & (AF_INET | AF_INET6)) > 0 && (type & SOCK_DGRAM) > 0) {
@@ -254,10 +256,10 @@ int tracepoint__syscalls__sys_enter_socket(struct trace_event_raw_sys_enter* ctx
 		return 0;
 	}
 
-	__u64 tid = bpf_get_current_pid_tgid();
     __u8 ok = 1;
     bpf_map_update_elem(&entering_udp_sockets, &tid, &ok, BPF_ANY);
 
+    log_debug("sys_enter_socket: found UDP family=%d, type=%d, tid=%u\n", family, type, tid);
 	return 0;
 }
 
@@ -265,6 +267,8 @@ int tracepoint__syscalls__sys_enter_socket(struct trace_event_raw_sys_enter* ctx
 SEC("tracepoint/syscalls/sys_exit_socket")
 int tracepoint__syscalls__sys_exit_socket(struct trace_event_raw_sys_exit* ctx) {
     __u64 tid = bpf_get_current_pid_tgid();
+    log_debug("tp/sys_exit_socket: fd=%d, tid=%u\n", ctx->ret, tid);
+
     __u8* is_udp = bpf_map_lookup_elem(&entering_udp_sockets, &tid);
 
     // socket(2) returns a file discriptor.
@@ -285,6 +289,7 @@ int tracepoint__syscalls__sys_exit_socket(struct trace_event_raw_sys_exit* ctx) 
     __u64 ok = 1;
     bpf_map_update_elem(&unbound_udp_sockets, &fd_and_tid, &ok, BPF_ANY);
 
+    log_debug("sys_exit_socket: found UDP fd=%d, tid=%u\n", ctx->ret, tid);
     return 0;
 
 end:
@@ -295,17 +300,17 @@ end:
 
 SEC("tracepoint/syscalls/sys_enter_bind")
 int tracepoint__syscalls__sys_enter_bind(struct trace_event_raw_sys_enter* ctx) {
-    log_debug("tp/sys_enter_bind: fd=%u, umyaddr=%x\n", ctx->fd, ctx->umyaddr);
-
+    __u64 tid = bpf_get_current_pid_tgid();
 	int fd = (int)ctx->args[0];
 	const struct sockaddr *addr = (const struct sockaddr *)ctx->args[1];
+
+    log_debug("tp/sys_enter_bind: fd=%u, umyaddr=%x, tid=%u\n", fd, addr, tid);
 
 	if (!addr) {
         return 0;
     }
 
     // determine if the fd for this process is an unbound UDP socket.
-    __u64 tid = bpf_get_current_pid_tgid();
     __u64 fd_and_tid = (tid << 32) | fd;
     __u64* socket = bpf_map_lookup_elem(&unbound_udp_sockets, &fd_and_tid);
     if (!socket) {
@@ -330,15 +335,15 @@ int tracepoint__syscalls__sys_enter_bind(struct trace_event_raw_sys_enter* ctx) 
 	args.fd = fd;
 	bpf_map_update_elem(&entering_bind, &tid, &args, BPF_ANY);
 
-	log_debug("sys_enter_bind: tid=%u port=%d fd=%u\n", tid, sin_port, fd);
+	log_debug("sys_enter_bind: port=%d fd=%u tid=%u\n", sin_port, fd, tid);
 	return 0;
 }
 
 SEC("tracepoint/syscalls/sys_exit_bind")
 int tracepoint__syscalls__sys_exit_bind(struct trace_event_raw_sys_exit* ctx) {
-    log_debug("tp/sys_exit_bind: ret=%d\n", ctx->ret);
-
     __u64 tid = bpf_get_current_pid_tgid();
+
+    log_debug("tp/sys_exit_bind: ret=%d, tid=%u\n", ctx->ret, tid);
 
     if (ctx->ret != 0) {
         return 0;
@@ -354,6 +359,6 @@ int tracepoint__syscalls__sys_exit_bind(struct trace_event_raw_sys_exit* ctx) {
 	__u8 state = PORT_LISTENING;
 	bpf_map_update_elem(&udp_port_binding, &key, &state, BPF_ANY);
 
-    log_debug("sys_exit_bind: UDP port:%u\n", args->port);
+    log_debug("sys_exit_bind: UDP port:%u, tid:%u\n", args->port, tid);
     return 0;
 }
