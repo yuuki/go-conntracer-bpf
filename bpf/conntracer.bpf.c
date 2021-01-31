@@ -84,6 +84,19 @@ struct {
 	__type(value, struct bind_args);
 } entering_bind SEC(".maps");
 
+static __always_inline __u8
+detect_udp_flow_direction(__u16 port)
+{
+	__u8 *state = bpf_map_lookup_elem(&udp_port_binding, &port);
+	if (!state) {
+		return FLOW_ACTIVE;
+	}
+	if (*state == PORT_LISTENING) {
+		return FLOW_PASSIVE;
+	}
+	return FLOW_ACTIVE;
+}
+
 static __always_inline void
 insert_flows(pid_t pid, struct sock *sk, __u16 lport, __u8 direction)
 {
@@ -199,13 +212,14 @@ SEC("kprobe/udp_sendmsg")
 int BPF_KPROBE(udp_sendmsg, struct sock *sk) {
 	__u64 pid_tgid = bpf_get_current_pid_tgid();
 	__u32 pid = pid_tgid >> 32;
-	__u16 lport;
+	__u16 dport, sport;
 
-	BPF_CORE_READ_INTO(&lport, sk, __sk_common.skc_dport);
+	BPF_CORE_READ_INTO(&dport, sk, __sk_common.skc_dport);
+	BPF_CORE_READ_INTO(&sport, sk, __sk_common.skc_num);
 
-	insert_udp_flows(pid, sk, lport, FLOW_ACTIVE);
+	insert_udp_flows(pid, sk, dport, detect_udp_flow_direction(sport));
 
-	log_debug("kprobe/udp_sendmsg: pid_tgid: %d, lport: %d\n", pid_tgid, lport);
+	log_debug("kprobe/udp_sendmsg: lport:%u, tgid:%u\n", sport, pid_tgid);
 	return 0;
 }
 
@@ -233,7 +247,7 @@ int BPF_KRETPROBE(udp_recvmsg_ret, int ret) {
 
 	BPF_CORE_READ_INTO(&lport, sk, __sk_common.skc_dport);
 
-	insert_udp_flows(pid, sk, lport, FLOW_PASSIVE);
+	insert_udp_flows(pid, sk, lport, detect_udp_flow_direction(lport));
 
     log_debug("kretprobe/udp_recvmsg: pid_tgid: %d\n", pid_tgid);
 end:
