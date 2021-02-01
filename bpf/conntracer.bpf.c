@@ -260,6 +260,12 @@ int BPF_KRETPROBE(udp_recvmsg_ret, int ret) {
 	BPF_CORE_READ_INTO(&sport, sk, __sk_common.skc_num);
 	BPF_CORE_READ_INTO(&dport, sk, __sk_common.skc_dport);
 
+	if (!flow_key.saddr || !flow_key.daddr) {
+		// fall back to 'kprobe/__udp4_lib_lookup'
+    	log_debug("kretprobe/udp_recvmsg: saddr or daddr is empty tid:%u\n", pid_tgid);
+		goto end;
+	}
+
 	__u8 *sstate = bpf_map_lookup_elem(&udp_port_binding, &sport);
 	if (sstate) {
 		flow_key.direction = FLOW_PASSIVE;
@@ -276,6 +282,48 @@ end:
 	bpf_map_delete_elem(&udp_recv_sock, &pid_tgid);
     return 0;
 }
+
+// struct sock with udp_recvmsg may not miss ip addresses on listening socket.
+// Addresses are retrieved from arguments of __udp4_lib_lookup.
+// https://elixir.bootlin.com/linux/v5.8.18/source/net/ipv4/udp.c#L451
+SEC("kprobe/__udp4_lib_lookup")
+int BPF_KPROBE(__udp4_lib_lookup, __be32 saddr, __be16 sport, __be32 daddr, __be16 dport) {
+	struct ipv4_flow_key flow_key = {};
+
+    __u64 pid_tgid = bpf_get_current_pid_tgid();
+	__u32 pid = pid_tgid >> 32;
+
+	if (pid == 0) {
+		// `swapper` process with pid = 0 calls __udp4_lib_lookup for some resonse.
+		// This unexpected flow is ignored.
+		return 0;
+	}
+	if (!saddr || !daddr) {
+		return 0;
+	}
+
+	flow_key.saddr = saddr;
+	flow_key.daddr = daddr;
+
+	__u16 sport_key = bpf_htons(sport);
+	__u8 *sstate = bpf_map_lookup_elem(&udp_port_binding, &sport_key);
+	if (sstate) {
+		flow_key.direction = FLOW_PASSIVE;
+		flow_key.lport = sport;
+	} else {
+		flow_key.direction = FLOW_ACTIVE;
+		flow_key.lport = dport;
+	}
+
+	flow_key.l4_proto = IPPROTO_UDP;
+
+	insert_udp_flows(pid, &flow_key);
+
+    log_debug("kprobe/__udp4_lib_lookup: sport:%u, dport:%u, tid:%u\n",
+		sport, dport, pid_tgid);
+    return 0;
+}
+
 
 // for tracking UDP listening state
 SEC("tracepoint/syscalls/sys_enter_socket")
