@@ -128,26 +128,19 @@ insert_flows(pid_t pid, struct sock *sk, __u16 lport, __u8 direction)
 }
 
 static __always_inline void
-insert_udp_flows(pid_t pid, struct sock *sk, __u16 lport, __u8 direction)
+insert_udp_flows(pid_t pid, struct ipv4_flow_key* flow_key)
 {
-	struct flow flow = {}, *val;
-	struct ipv4_flow_key flow_key = {};
+	struct flow flow = {};
 
-	BPF_CORE_READ_INTO(&flow.saddr, sk, __sk_common.skc_rcv_saddr);
-	BPF_CORE_READ_INTO(&flow.daddr, sk, __sk_common.skc_daddr);
-	flow.lport = lport;
+	flow.saddr = flow_key->saddr;
+	flow.daddr = flow_key->daddr;
+	flow.lport = flow_key->lport;
+	flow.direction = flow_key->direction;
+	flow.l4_proto = flow_key->l4_proto;
 	flow.pid = pid;
-	flow.direction = direction;
-	flow.l4_proto = IPPROTO_UDP;
 	bpf_get_current_comm(flow.task, sizeof(flow.task));
 
-	flow_key.saddr = flow.saddr;
-	flow_key.daddr = flow.daddr;
-	flow_key.lport = flow.lport;
-	flow_key.direction = flow.direction;
-	flow_key.l4_proto = flow.l4_proto;
-
-	bpf_map_update_elem(&flows, &flow_key, &flow, BPF_ANY);
+	bpf_map_update_elem(&flows, flow_key, &flow, BPF_ANY);
 }
 
 SEC("kprobe/tcp_v4_connect")
@@ -208,16 +201,32 @@ int BPF_KRETPROBE(inet_csk_accept_ret, struct sock *sk)
 	return 0;
 }
 
-SEC("kprobe/udp_sendmsg")
-int BPF_KPROBE(udp_sendmsg, struct sock *sk) {
+// struct sock with udp_sendmsg may not miss ip addresses on listening socket.
+// Addresses are retrieved from struct flowi4 with ip_make_skb.
+// https://github.com/DataDog/datadog-agent/pull/6307
+SEC("kprobe/ip_make_skb")
+int BPF_KPROBE(ip_make_skb, struct sock *sk, struct flowi4 *flw4) {
 	__u64 pid_tgid = bpf_get_current_pid_tgid();
 	__u32 pid = pid_tgid >> 32;
 	__u16 dport, sport;
+	struct ipv4_flow_key flow_key = {};
 
-	BPF_CORE_READ_INTO(&dport, sk, __sk_common.skc_dport);
 	BPF_CORE_READ_INTO(&sport, sk, __sk_common.skc_num);
+	BPF_CORE_READ_INTO(&dport, sk, __sk_common.skc_dport);
+	BPF_CORE_READ_INTO(&flow_key.saddr, flw4, saddr);
+	BPF_CORE_READ_INTO(&flow_key.daddr, flw4, daddr);
 
-	insert_udp_flows(pid, sk, dport, detect_udp_flow_direction(sport));
+	__u8 *sstate = bpf_map_lookup_elem(&udp_port_binding, &sport);
+	if (sstate) {
+		flow_key.direction = FLOW_PASSIVE;
+		flow_key.lport = bpf_htons(sport);
+	} else {
+		flow_key.direction = FLOW_ACTIVE;
+		flow_key.lport = dport;
+	}
+	flow_key.l4_proto = IPPROTO_UDP;
+
+	insert_udp_flows(pid, &flow_key);
 
 	log_debug("kprobe/udp_sendmsg: lport:%u, tgid:%u\n", sport, pid_tgid);
 	return 0;
@@ -237,7 +246,8 @@ SEC("kretprobe/udp_recvmsg")
 int BPF_KRETPROBE(udp_recvmsg_ret, int ret) {
     __u64 pid_tgid = bpf_get_current_pid_tgid();
 	__u32 pid = pid_tgid >> 32;
-	__u16 lport;
+	__u16 sport, dport, lport;
+	struct ipv4_flow_key flow_key = {};
 
 	struct sock** skpp = bpf_map_lookup_elem(&udp_recv_sock, &pid_tgid);
     if (skpp == 0) {
@@ -245,9 +255,21 @@ int BPF_KRETPROBE(udp_recvmsg_ret, int ret) {
 	}
     struct sock* sk = *skpp;
 
-	BPF_CORE_READ_INTO(&lport, sk, __sk_common.skc_dport);
+	BPF_CORE_READ_INTO(&flow_key.saddr, sk, __sk_common.skc_rcv_saddr);
+	BPF_CORE_READ_INTO(&flow_key.daddr, sk, __sk_common.skc_daddr);
+	BPF_CORE_READ_INTO(&sport, sk, __sk_common.skc_num);
+	BPF_CORE_READ_INTO(&dport, sk, __sk_common.skc_dport);
 
-	insert_udp_flows(pid, sk, lport, detect_udp_flow_direction(lport));
+	__u8 *sstate = bpf_map_lookup_elem(&udp_port_binding, &sport);
+	if (sstate) {
+		flow_key.direction = FLOW_PASSIVE;
+		flow_key.lport = bpf_htons(sport);
+	} else {
+		flow_key.direction = FLOW_ACTIVE;
+		flow_key.lport = dport;
+	}
+
+	insert_udp_flows(pid, &flow_key);
 
     log_debug("kretprobe/udp_recvmsg: pid_tgid: %d\n", pid_tgid);
 end:
