@@ -9,6 +9,8 @@ go-conntracer-bpf is a library for Go for tracing network connection (TCP) event
 - Low-overhead tracing by aggregating connection events in kernel.
 - BPF CO-RE (Compile Once – Run Everywhere)-enabled
 
+![Flow events aggregation in kernel](./docs/images/aggregation.png "aggregation")
+
 ## Prerequisites
 
 ### Compilation phase
