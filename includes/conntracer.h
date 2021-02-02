@@ -8,6 +8,20 @@
 
 #define TASK_COMM_LEN 16
 
+/* Helper to output debug logs to /sys/kernel/debug/tracing/trace_pipe
+ */
+#if DEBUG == 1
+#define log_debug(fmt, ...)                                        \
+    ({                                                             \
+        char ____fmt[] = fmt;                                      \
+        bpf_trace_printk(____fmt, sizeof(____fmt), ##__VA_ARGS__); \
+    })
+#else
+// No op
+#define log_debug(fmt, ...)
+#endif
+
+
 typedef enum
 {
 	FLOW_UNKNOWN = 1,
