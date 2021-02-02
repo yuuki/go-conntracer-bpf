@@ -4,7 +4,7 @@ package conntracer
 // Due to the restriction of //export,
 // function definitions must be placed in preambles in other files.
 // https://golang.org/cmd/cgo/#hdr-C_references_to_Go
-#cgo CFLAGS: -I${SRCDIR}/includes
+#cgo CFLAGS: -I${SRCDIR}/include
 
 #include <stddef.h>
 

@@ -11,14 +11,15 @@ import (
 	"time"
 	"unsafe"
 
-	// Put the C header files into Go module management
-	_ "github.com/yuuki/go-conntracer-bpf/includes"
-	_ "github.com/yuuki/go-conntracer-bpf/includes/bpf"
 	"golang.org/x/xerrors"
+
+	// Put the C header files into Go module management
+	_ "github.com/yuuki/go-conntracer-bpf/include"
+	_ "github.com/yuuki/go-conntracer-bpf/include/bpf"
 )
 
 /*
-#cgo CFLAGS: -I${SRCDIR}/includes
+#cgo CFLAGS: -I${SRCDIR}/include
 #cgo LDFLAGS: -lelf -lz
 
 #include <sys/resource.h>

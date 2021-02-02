@@ -12,8 +12,8 @@ BPFTOOL ?= $(abspath tools/bpftool)
 LIBBPF_SRC := $(abspath libbpf/src)
 LIBBPF_OBJ := $(abspath $(OUTPUT)/libbpf.a)
 BPF_SRC_DIR := bpf
-INCLUDES_DIR := $(abspath includes)
-INCLUDES := -I$(OUTPUT) -I$(INCLUDES_DIR)
+INCLUDE_DIR := $(abspath include)
+INCLUDES := -I$(OUTPUT) -I$(INCLUDE_DIR)
 CFLAGS := -g -Wall
 ARCH_UNAME := $(shell uname -m)
 ARCH ?= $(ARCH_UNAME:aarch64=arm64)
@@ -58,20 +58,20 @@ $(OUTPUT)/%.bpf.o: $(BPF_SRC_DIR)/%.bpf.c $(LIBBPF_OBJ) $(wildcard %.h) $(BPF_SR
 	@$(LLVM_STRIP) -g $@ # strip useless DWARF info
 
 # Generate BPF skeletons
-$(INCLUDES_DIR)/%.skel.h: $(OUTPUT)/%.bpf.o | $(OUTPUT)
+$(INCLUDE_DIR)/%.skel.h: $(OUTPUT)/%.bpf.o | $(OUTPUT)
 	$(call msg,GEN-SKEL,$@)
 	@$(BPFTOOL) gen skeleton $< > $@
 
 .PHONY: bpf
-bpf: goclean $(patsubst %,$(INCLUDES_DIR)/%.skel.h,$(BPF_PROGS))
+bpf: goclean $(patsubst %,$(INCLUDE_DIR)/%.skel.h,$(BPF_PROGS))
 
 .PHONY: bpf/clean
 bpf/clean:
-	rm -f $(OUTPUT)/*.bpf.o includes/*.skel.h
+	rm -f $(OUTPUT)/*.bpf.o $(INCLUDE_DIR)/*.skel.h
 
 #--- User-space code ---
 
-go_env := GOOS=linux GOARCH=$(ARCH:x86_64=amd64) CGO_CFLAGS="-I $(INCLUDES_DIR) -Wno-implicit-function-declaration" CGO_LDFLAGS="$(abspath $(LIBBPF_OBJ)) -lelf -lz"
+go_env := GOOS=linux GOARCH=$(ARCH:x86_64=amd64) CGO_CFLAGS="-I $(INCLUDE_DIR) -Wno-implicit-function-declaration" CGO_LDFLAGS="$(abspath $(LIBBPF_OBJ)) -lelf -lz"
 
 $(TOOL): bpf $(LIBBPF_OBJ) $(filter-out *_test.go,$(GO_SRC))
 	$(call msg,BINARY,$@)

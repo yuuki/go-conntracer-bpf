@@ -1,7 +1,7 @@
 package conntracer
 
 /*
-#cgo CFLAGS: -I${SRCDIR}/includes
+#cgo CFLAGS: -I${SRCDIR}/include
 #cgo LDFLAGS: -lelf -lz
 
 #include <sys/resource.h>
