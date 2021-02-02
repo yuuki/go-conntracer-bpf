@@ -71,19 +71,6 @@ struct {
 	__type(value, struct bind_args);
 } entering_bind SEC(".maps");
 
-static __always_inline __u8
-detect_udp_flow_direction(__u16 port)
-{
-	__u8 *state = bpf_map_lookup_elem(&udp_port_binding, &port);
-	if (!state) {
-		return FLOW_ACTIVE;
-	}
-	if (*state == PORT_LISTENING) {
-		return FLOW_PASSIVE;
-	}
-	return FLOW_ACTIVE;
-}
-
 static __always_inline void
 insert_flows(pid_t pid, struct sock *sk, __u16 lport, __u8 direction)
 {
