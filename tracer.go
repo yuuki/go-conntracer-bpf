@@ -14,6 +14,7 @@ import (
 	// Put the C header files into Go module management
 	_ "github.com/yuuki/go-conntracer-bpf/includes"
 	_ "github.com/yuuki/go-conntracer-bpf/includes/bpf"
+	"golang.org/x/xerrors"
 )
 
 /*
@@ -37,7 +38,7 @@ type FlowDirection uint8
 
 const (
 	// FlowUnknown are unknown flow.
-	FlowUnknown FlowDirection = 1 << iota
+	FlowUnknown FlowDirection = iota + 1
 	// FlowActive are 'active open'.
 	FlowActive
 	// FlowPassive are 'passive open'
@@ -47,6 +48,18 @@ const (
 	defaultFlowMapOpsBatchSize = 10
 )
 
+func flowDirectionFrom(x C.flow_direction) FlowDirection {
+	switch x {
+	case C.FLOW_UNKNOWN:
+		return FlowUnknown
+	case C.FLOW_ACTIVE:
+		return FlowActive
+	case C.FLOW_PASSIVE:
+		return FlowPassive
+	}
+	return FlowUnknown
+}
+
 // Flow is a bunch of aggregated connections group by listening port.
 type Flow struct {
 	SAddr       *net.IP
@@ -55,6 +68,7 @@ type Flow struct {
 	LPort       uint16 // Listening port
 	Direction   FlowDirection
 	LastPID     uint32
+	L4Proto     uint8
 	Stat        *FlowStat
 }
 
@@ -89,11 +103,9 @@ func NewTracer() (*Tracer, error) {
 		return nil, fmt.Errorf("failed to attach BPF programs: %v", C.strerror(-cerr))
 	}
 
-	stopChan := make(chan struct{})
-
 	t := &Tracer{
 		obj:       obj,
-		stopChan:  stopChan,
+		stopChan:  make(chan struct{}),
 		batchSize: defaultFlowMapOpsBatchSize,
 	}
 	return t, nil
@@ -106,8 +118,12 @@ func (t *Tracer) Close() {
 }
 
 // Start starts polling loop.
-func (t *Tracer) Start(cb func([]*Flow) error, interval time.Duration) {
+func (t *Tracer) Start(cb func([]*Flow) error, interval time.Duration) error {
+	if err := t.initializeUDPPortBindingMap(); err != nil {
+		return err
+	}
 	go t.pollFlows(cb, interval)
+	return nil
 }
 
 // Stop stops polling loop.
@@ -122,6 +138,10 @@ func (t *Tracer) DumpFlows() ([]*Flow, error) {
 
 func (t *Tracer) flowsMapFD() C.int {
 	return C.bpf_map__fd(t.obj.maps.flows)
+}
+
+func (t *Tracer) udpPortBindingMapFD() C.int {
+	return C.bpf_map__fd(t.obj.maps.udp_port_binding)
 }
 
 func (t *Tracer) pollFlows(cb func([]*Flow) error, interval time.Duration) {
@@ -166,7 +186,7 @@ func dumpFlows(fd C.int) ([]*Flow, error) {
 		n = batchSize
 		ret, err = C.bpf_map_lookup_and_delete_batch(fd, pKey, pNextKey,
 			unsafe.Pointer(uintptr(ckeys)+uintptr(nRead*C.sizeof_struct_ipv4_flow_key)),
-			unsafe.Pointer(uintptr(cvalues)+uintptr(nRead*C.sizeof_struct_ipv4_flow_key)),
+			unsafe.Pointer(uintptr(cvalues)+uintptr(nRead*C.sizeof_struct_flow)),
 			&n, opts)
 		if err != nil && err != syscall.Errno(syscall.ENOENT) {
 			return nil, fmt.Errorf("Error bpf_map_lookup_and_delete_batch, fd:%d, ret:%d, %s", fd, ret, err)
@@ -187,7 +207,8 @@ func dumpFlows(fd C.int) ([]*Flow, error) {
 			DAddr:       &daddr,
 			ProcessName: C.GoString((*C.char)(unsafe.Pointer(&values[i].task))),
 			LPort:       ntohs((uint16)(values[i].lport)),
-			Direction:   FlowDirection((uint8)(values[i].direction)),
+			Direction:   flowDirectionFrom((C.flow_direction)(values[i].direction)),
+			L4Proto:     (uint8)(ntohs((uint16)(values[i].l4_proto))),
 			LastPID:     (uint32)(values[i].pid),
 			Stat: &FlowStat{
 				NewConnections: (uint32)(values[i].stat.connections),
@@ -197,4 +218,37 @@ func dumpFlows(fd C.int) ([]*Flow, error) {
 	}
 
 	return flows, nil
+}
+
+func (t *Tracer) initializeUDPPortBindingMap() error {
+	ports, err := getLocalListeningPorts(syscall.IPPROTO_UDP)
+	if err != nil {
+		return err
+	}
+
+	keys := make([]C.struct_port_binding_key, len(ports))
+	for i := range keys {
+		keys[i].port = (C.ushort)(ports[i])
+	}
+	values := make([]uint32, len(ports))
+	for i := range values {
+		values[i] = C.PORT_LISTENING
+	}
+	count := (C.uint)(len(ports))
+	opts := &C.struct_bpf_map_batch_opts{
+		elem_flags: C.BPF_ANY,
+		flags:      0,
+		sz:         C.sizeof_struct_bpf_map_batch_opts,
+	}
+	ret := C.bpf_map_update_batch(
+		t.udpPortBindingMapFD(),
+		unsafe.Pointer(&ports[0]),  // keys
+		unsafe.Pointer(&values[0]), // values
+		&count,
+		opts)
+	if ret != 0 {
+		return xerrors.Errorf("could not update port_bindings map: ret:%d", ret)
+	}
+
+	return nil
 }

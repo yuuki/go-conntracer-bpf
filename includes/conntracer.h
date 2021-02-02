@@ -4,6 +4,7 @@
 /* The maximum number of items in maps */
 #define MAX_ENTRIES 8192
 #define MAX_FLOW_ENTRIES 4096
+#define MAX_PORT_BINDING_ENTRIES 65535
 
 #define TASK_COMM_LEN 16
 
@@ -19,6 +20,7 @@ struct ipv4_flow_key {
 	__u32 daddr;
 	__u16 lport;				// listening port
 	flow_direction direction; 	// 0x10: "connect"(active), 0x20: "accept"(passive)
+	__u8 l4_proto;           	// sk_protocol such as IPPRPTO_TCP, IPPROTO_UDP
 };
 
 struct ipv6_flow_key {
@@ -42,7 +44,22 @@ struct flow {
 	__u16 lport;  				// listening port
 	flow_direction direction; 	// 1: "connect"(active), 2: "accept"(passive)
 	__u32 pid;
+	__u8 l4_proto;
 	struct flow_stat stat;
+};
+
+struct bind_args {
+    __u16 port;
+    __u64 fd;
+};
+
+enum {
+	PORT_CLOSED = 0,
+	PORT_LISTENING = 1,
+};
+
+struct port_binding_key {
+ 	__u16 port;
 };
 
 #endif /* __CONNTRACER_H */
