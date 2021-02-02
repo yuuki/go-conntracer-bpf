@@ -21,7 +21,7 @@ struct {
 	__type(key, u32);
 	__type(value, struct sock *);
 	__uint(map_flags, BPF_F_NO_PREALLOC);
-} sockets SEC(".maps");
+} tcp_connect_sockets SEC(".maps");
 
 struct {
 	__uint(type, BPF_MAP_TYPE_HASH);
@@ -137,9 +137,9 @@ int BPF_KPROBE(tcp_v4_connect, struct sock *sk)
 	__u32 pid = pid_tgid >> 32;
 	__u32 tid = pid_tgid;
 
-	bpf_map_update_elem(&sockets, &tid, &sk, BPF_ANY);
+	bpf_map_update_elem(&tcp_connect_sockets, &tid, &sk, BPF_ANY);
 
-	log_debug("kprobe/tcp_v4_connect: pid_tgid:%d\n", pid_tgid);
+	log_debug("kprobe/tcp_v4_connect: pid_tgid:%u\n", pid_tgid);
 	return 0;
 }
 
@@ -151,7 +151,7 @@ int BPF_KRETPROBE(tcp_v4_connect_ret, int ret)
 	__u32 tid = pid_tgid;
 	__u16 dport = 0;
 
-	struct sock** skpp = bpf_map_lookup_elem(&sockets, &tid);
+	struct sock** skpp = bpf_map_lookup_elem(&tcp_connect_sockets, &tid);
 	if (!skpp)
 		return 0;
 
@@ -164,9 +164,9 @@ int BPF_KRETPROBE(tcp_v4_connect_ret, int ret)
 
 	insert_flows(pid, sk, dport, FLOW_ACTIVE);
 
-	log_debug("kretprobe/tcp_v4_connect: pid_tgid:%d, dport:%d\n", pid_tgid, dport);
+	log_debug("kretprobe/tcp_v4_connect: dport:%u, tid:%u\n", dport, pid_tgid);
 end:
-	bpf_map_delete_elem(&sockets, &tid);
+	bpf_map_delete_elem(&tcp_connect_sockets, &tid);
 	return 0;
 }
 
@@ -184,7 +184,7 @@ int BPF_KRETPROBE(inet_csk_accept_ret, struct sock *sk)
 
 	insert_flows(pid, sk, lport, FLOW_PASSIVE);
 
-	log_debug("kretprobe/inet_csk_accept: pid_tgid:%d, lport:%d\n", pid_tgid, lport);
+	log_debug("kretprobe/inet_csk_accept: lport:%u,pid_tgid:%u\n", pid_tgid, lport);
 	return 0;
 }
 

@@ -2,7 +2,7 @@
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/yuuki/go-conntracer-bpf.svg)](https://pkg.go.dev/github.com/yuuki/go-conntracer-bpf)
 
-go-conntracer-bpf is a library for Go for tracing network connection (TCP) events (connect, accept) on BPF kprobe inspired by [weaveworks/tcptracer-bpf](https://github.com/weaveworks/tcptracer-bpf). go-conntracer-bpf is implemented on top of [libbpf](https://github.com/libbpf/libbpf), which is a representative C library for BPF included Linux kernel.
+go-conntracer-bpf is a library for Go for tracing network connection (TCP/UDP) events (connect, accept, sendto, recvfrom) on BPF kprobe inspired by [weaveworks/tcptracer-bpf](https://github.com/weaveworks/tcptracer-bpf). go-conntracer-bpf is implemented on top of [libbpf](https://github.com/libbpf/libbpf), which is a representative C library for BPF included Linux kernel.
 
 ## Features
 
