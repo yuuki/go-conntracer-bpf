@@ -10,6 +10,6 @@ Vagrant.configure("2") do |config|
   config.vm.provision :shell, :privileged => false, :path => "tools/provisioning.sh"
   config.vm.synced_folder "./", "/home/vagrant/go-conntracer-bpf", mount_options: ['dmode=777','fmode=777']
   config.vm.provider "virtualbox" do |vb|
-    vb.memory = "2500"
+    vb.memory = "2000"
   end
 end
