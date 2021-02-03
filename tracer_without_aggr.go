@@ -74,6 +74,10 @@ var globalFlowChan chan *Flow
 func (t *TracerWithoutAggr) Start(fc chan *Flow) error {
 	globalFlowChan = fc
 
+	if err := initializeUDPPortBindingMap(t.udpPortBindingMapFD()); err != nil {
+		return err
+	}
+
 	for {
 		select {
 		case <-t.stopChan:
@@ -102,4 +106,8 @@ func (t *TracerWithoutAggr) Stop() {
 func (t *TracerWithoutAggr) Close() {
 	close(t.stopChan)
 	C.conntracer_without_aggr_bpf__destroy(t.obj)
+}
+
+func (t *TracerWithoutAggr) udpPortBindingMapFD() C.int {
+	return C.bpf_map__fd(t.obj.maps.udp_port_binding)
 }

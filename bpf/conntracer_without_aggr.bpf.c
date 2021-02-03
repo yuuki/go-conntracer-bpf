@@ -201,7 +201,8 @@ int BPF_KPROBE(skb_consume_udp, struct sock *sk, struct sk_buff *skb) {
 
 	struct udphdr *udphdr = (struct udphdr *)(BPF_CORE_READ(skb, head)
 		+ BPF_CORE_READ(skb,transport_header));
-	struct iphdr *iphdr = (struct iphdr *)(BPF_CORE_READ(skb, head) + BPF_CORE_READ(skb, network_header));
+	struct iphdr *iphdr = (struct iphdr *)(BPF_CORE_READ(skb, head) 
+		+ BPF_CORE_READ(skb, network_header));
 
 	struct ipv4_flow_key flow_key = {};
 	__u16 sport = BPF_CORE_READ(udphdr, source);

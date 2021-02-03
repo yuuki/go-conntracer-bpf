@@ -11,8 +11,6 @@ import (
 	"time"
 	"unsafe"
 
-	"golang.org/x/xerrors"
-
 	// Put the C header files into Go module management
 	_ "github.com/yuuki/go-conntracer-bpf/include"
 	_ "github.com/yuuki/go-conntracer-bpf/include/bpf"
@@ -120,7 +118,7 @@ func (t *Tracer) Close() {
 
 // Start starts polling loop.
 func (t *Tracer) Start(cb func([]*Flow) error, interval time.Duration) error {
-	if err := t.initializeUDPPortBindingMap(); err != nil {
+	if err := initializeUDPPortBindingMap(t.udpPortBindingMapFD()); err != nil {
 		return err
 	}
 	go t.pollFlows(cb, interval)
@@ -219,37 +217,4 @@ func dumpFlows(fd C.int) ([]*Flow, error) {
 	}
 
 	return flows, nil
-}
-
-func (t *Tracer) initializeUDPPortBindingMap() error {
-	ports, err := getLocalListeningPorts(syscall.IPPROTO_UDP)
-	if err != nil {
-		return err
-	}
-
-	keys := make([]C.struct_port_binding_key, len(ports))
-	for i := range keys {
-		keys[i].port = (C.ushort)(ports[i])
-	}
-	values := make([]uint32, len(ports))
-	for i := range values {
-		values[i] = C.PORT_LISTENING
-	}
-	count := (C.uint)(len(ports))
-	opts := &C.struct_bpf_map_batch_opts{
-		elem_flags: C.BPF_ANY,
-		flags:      0,
-		sz:         C.sizeof_struct_bpf_map_batch_opts,
-	}
-	ret := C.bpf_map_update_batch(
-		t.udpPortBindingMapFD(),
-		unsafe.Pointer(&ports[0]),  // keys
-		unsafe.Pointer(&values[0]), // values
-		&count,
-		opts)
-	if ret != 0 {
-		return xerrors.Errorf("could not update port_bindings map: ret:%d", ret)
-	}
-
-	return nil
 }
