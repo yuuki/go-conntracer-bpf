@@ -21,7 +21,6 @@
 #define log_debug(fmt, ...)
 #endif
 
-
 typedef enum
 {
 	FLOW_UNKNOWN = 1,
