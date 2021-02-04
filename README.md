@@ -27,6 +27,14 @@ go-conntracer-bpf is a library for Go for tracing network connection (TCP/UDP) e
 
 - libelf and zlib libraries
 
+## Features of Linux kernel included in go-conntracer-bpf
+
+go-conntracer-bpf makes use of some latest features of Linux kernel.
+
+- BPF Type Format (BTF)	in kernel version 4.18.
+- Batch API to BPF map (BPF_MAP_UPDATE_BATCH, BPF_MAP_LOOKUP_AND_DELETE_BATCH) in kernel version 5.6.
+- Ring Buffer in kernel version 5.8 (only a flavor of no-aggregation in kernel).
+
 ## Usage
 
 - [godoc](https://godoc.org/github.com/yuuki/go-conntracer-bpf)
