@@ -24,9 +24,8 @@ struct {
 } tcp_connect_sockets SEC(".maps");
 
 struct {
-	__uint(type, BPF_MAP_TYPE_PERF_EVENT_ARRAY);
-	__uint(key_size, sizeof(u32));
-	__uint(value_size, sizeof(u32));
+	__uint(type, BPF_MAP_TYPE_RINGBUF);
+	__uint(max_entries, 256 * 1024 /* 256 KB */);
 } flows SEC(".maps");
 
 // udp_port_binding is a map for tracking LISNING or CLOSED ports.
@@ -62,42 +61,44 @@ struct {
 } entering_bind SEC(".maps");
 
 static __always_inline void
-insert_tcp_flows(void* ctx, pid_t pid, struct sock *sk, __u16 lport, __u8 direction)
+insert_flows(pid_t pid, struct sock *sk, __u16 lport, __u8 direction)
 {
-	struct flow flow = {};
+	struct flow *flow;
 
-	flow.ts_us = bpf_ktime_get_ns() / 1000;
-	BPF_CORE_READ_INTO(&flow.saddr, sk, __sk_common.skc_rcv_saddr);
-	BPF_CORE_READ_INTO(&flow.daddr, sk, __sk_common.skc_daddr);
-	flow.lport = lport;
-	flow.pid = pid;
-	flow.direction = direction;
-	bpf_get_current_comm(&flow.task, sizeof(flow.task));
+	flow = bpf_ringbuf_reserve(&flows, sizeof(*flow), 0);
+	if (!flow)
+		return;
 
-	bpf_perf_event_output(ctx, &flows, BPF_F_CURRENT_CPU, &flow, sizeof(flow));
+	flow->ts_us = bpf_ktime_get_ns() / 1000;
+	BPF_CORE_READ_INTO(&flow->saddr, sk, __sk_common.skc_rcv_saddr);
+	BPF_CORE_READ_INTO(&flow->daddr, sk, __sk_common.skc_daddr);
+	flow->lport = lport;
+	flow->pid = pid;
+	flow->direction = direction;
+	bpf_get_current_comm(&flow->task, sizeof(flow->task));
+
+    bpf_ringbuf_submit(flow, 0);
 }
 
 static __always_inline void
-insert_udp_flows(void* ctx, pid_t pid, struct ipv4_flow_key* flow_key)
+insert_udp_flows(pid_t pid, struct ipv4_flow_key* flow_key)
 {
-	struct flow flow = {};
+	struct flow *flow;
 
-	// flow = bpf_ringbuf_reserve(&flows, sizeof(*flow), 0);
-	// if (!flow) {
-	// 	log_debug("udp_flows: rb reserve failed, pid:%d\n", pid);
-	// 	return;
-	// }
+	flow = bpf_ringbuf_reserve(&flows, sizeof(*flow), 0);
+	if (!flow)
+		return;
 
-	flow.ts_us = bpf_ktime_get_ns() / 1000;
-	flow.saddr = flow_key->saddr;
-	flow.daddr = flow_key->daddr;
-	flow.lport = flow_key->lport;
-	flow.direction = flow_key->direction;
-	flow.l4_proto = flow_key->l4_proto;
-	flow.pid = pid;
-	bpf_get_current_comm(flow.task, sizeof(flow.task));
+	flow->ts_us = bpf_ktime_get_ns() / 1000;
+	flow->saddr = flow_key->saddr;
+	flow->daddr = flow_key->daddr;
+	flow->lport = flow_key->lport;
+	flow->direction = flow_key->direction;
+	flow->l4_proto = flow_key->l4_proto;
+	flow->pid = pid;
+	bpf_get_current_comm(flow->task, sizeof(flow->task));
 
-	bpf_perf_event_output(ctx, &flows, BPF_F_CURRENT_CPU, &flow, sizeof(flow));
+    bpf_ringbuf_submit(flow, 0);
 }
 
 SEC("kprobe/tcp_v4_connect")
@@ -132,7 +133,7 @@ int BPF_KRETPROBE(tcp_v4_connect_ret, int ret)
 
 	BPF_CORE_READ_INTO(&dport, sk, __sk_common.skc_dport);
 
-	insert_tcp_flows(ctx, pid, sk, dport, FLOW_ACTIVE);
+	insert_flows(pid, sk, dport, FLOW_ACTIVE);
 
 end:
 	bpf_map_delete_elem(&tcp_connect_sockets, &tid);
@@ -152,7 +153,7 @@ int BPF_KRETPROBE(inet_csk_accept_ret, struct sock *sk)
 
 	BPF_CORE_READ_INTO(&lport, sk, __sk_common.skc_num);
 
-	insert_tcp_flows(ctx, pid, sk, lport, FLOW_PASSIVE);
+	insert_flows(pid, sk, lport, FLOW_PASSIVE);
 
 	log_debug("kretprobe/inet_csk_accept: pid_tgid:%d, lport:%d\n", pid_tgid, lport);
 	return 0;
@@ -185,7 +186,7 @@ int BPF_KPROBE(ip_make_skb, struct sock *sk, struct flowi4 *flw4) {
 	}
 	flow_key.l4_proto = IPPROTO_UDP;
 
-	insert_udp_flows(ctx, pid, &flow_key);
+	insert_udp_flows(pid, &flow_key);
 
 	log_debug("kprobe/udp_sendmsg: lport:%u, tgid:%u\n", sport, pid_tgid);
 	return 0;
@@ -223,7 +224,7 @@ int BPF_KPROBE(skb_consume_udp, struct sock *sk, struct sk_buff *skb) {
 
 	flow_key.l4_proto = IPPROTO_UDP;
 
-	insert_udp_flows(ctx, pid, &flow_key);
+	insert_udp_flows(pid, &flow_key);
 
     log_debug("kprobe/skb_consume_udp: sport:%u, dport:%u, tid:%u\n",
 		sport, dport, pid_tgid);

@@ -124,7 +124,6 @@ func runStreaming() {
 	for {
 		select {
 		case flow := <-flowChan:
-			log.Printf("flow: %s\n", flow)
 			tuple := connAggrTuple{SAddr: flow.SAddr.String(), DAddr: flow.DAddr.String(), LPort: flow.LPort}
 			aggrFlows.Store(tuple, flow)
 		case ret := <-sig:
