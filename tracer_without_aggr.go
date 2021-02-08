@@ -15,7 +15,7 @@ package conntracer
 
 // The gateway function for function pointer callbacks
 // https://github.com/golang/go/wiki/cgo#function-pointer-callbacks
-int handle_flow_cgo(void *ctx, void *data, size_t data_sz) {
+int handle_flow_cgo(void *ctx, int cpu, void *data, size_t data_sz) {
 	return handleFlow(ctx, data, data_sz);
 }
 */
@@ -30,7 +30,7 @@ import (
 // TracerWithoutAggr is an object for state retention without aggregation.
 type TracerWithoutAggr struct {
 	obj *C.struct_conntracer_without_aggr_bpf
-	rb  *C.struct_ring_buffer
+	rb  *C.struct_perf_buffer
 
 	stopChan chan struct{}
 }
@@ -54,10 +54,13 @@ func NewTracerWithoutAggr() (*TracerWithoutAggr, error) {
 	}
 
 	// Set up BPF ring buffer polling.
-	rb := C.ring_buffer__new(
+	pbOpts := C.struct_perf_buffer_opts{
+		sample_cb: (C.perf_buffer_sample_fn)(unsafe.Pointer(C.handle_flow_cgo)),
+	}
+	rb := C.perf_buffer__new(
 		C.bpf_map__fd(obj.maps.flows),
-		(C.ring_buffer_sample_fn)(unsafe.Pointer(C.handle_flow_cgo)),
-		nil, nil)
+		8,
+		&pbOpts)
 	if rb == nil {
 		return nil, fmt.Errorf("failed to create ring buffer")
 	}
@@ -85,7 +88,7 @@ func (t *TracerWithoutAggr) Start(fc chan *Flow) error {
 		default:
 		}
 
-		ret, err := C.ring_buffer__poll(t.rb, 100 /* timeout, ms */)
+		ret, err := C.perf_buffer__poll(t.rb, 100 /* timeout, ms */)
 		/* Ctrl-C will cause -EINTR */
 		if ret == -C.EINTR {
 			break
@@ -105,6 +108,7 @@ func (t *TracerWithoutAggr) Stop() {
 // Close closes tracer.
 func (t *TracerWithoutAggr) Close() {
 	close(t.stopChan)
+	C.perf_buffer__free(t.rb)
 	C.conntracer_without_aggr_bpf__destroy(t.obj)
 }
 

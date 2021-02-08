@@ -15,6 +15,7 @@ int handleFlow(void *ctx, void *data, size_t data_sz);
 */
 import "C"
 import (
+	"log"
 	"unsafe"
 )
 
@@ -23,6 +24,7 @@ func handleFlow(ctx unsafe.Pointer, data unsafe.Pointer, dataSZ C.size_t) C.int 
 	cflow := (*C.struct_flow)(data)
 	saddr := inetNtop((uint32)(cflow.saddr))
 	daddr := inetNtop((uint32)(cflow.daddr))
+	log.Printf("insert flow: %s\n", saddr)
 	globalFlowChan <- &Flow{
 		SAddr:       &saddr,
 		DAddr:       &daddr,
