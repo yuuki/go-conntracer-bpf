@@ -105,6 +105,7 @@ func (t *TracerWithoutAggr) Stop() {
 // Close closes tracer.
 func (t *TracerWithoutAggr) Close() {
 	close(t.stopChan)
+	C.ring_buffer__free(t.rb)
 	C.conntracer_without_aggr_bpf__destroy(t.obj)
 }
 
