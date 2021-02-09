@@ -25,14 +25,6 @@ struct {
 
 struct {
 	__uint(type, BPF_MAP_TYPE_HASH);
-	__uint(max_entries, MAX_ENTRIES);
-	__type(key, u32);
-	__type(value, struct sock *);
-	__uint(map_flags, BPF_F_NO_PREALLOC);
-} udp_recv_sock SEC(".maps");
-
-struct {
-	__uint(type, BPF_MAP_TYPE_HASH);
 	__type(key, struct ipv4_flow_key);
 	__type(value, struct flow);
 	__uint(max_entries, MAX_FLOW_ENTRIES);
