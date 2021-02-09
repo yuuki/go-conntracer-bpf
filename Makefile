@@ -80,7 +80,8 @@ $(TOOL): bpf $(LIBBPF_OBJ) $(filter-out *_test.go,$(GO_SRC))
 .PHONY: verify
 verify: bpf $(LIBBPF_OBJ)
 	$(call msg,VERIFY)
-	@$(go_env) $(SUDO) $(GO) run -mod vendor ./tools/verifier
+	@$(go_env) $(GO) build -mod vendor ./tools/verifier
+	@$(SUDO) ./verifier
 
 .PHONY: test
 test: bpf $(LIBBPF_OBJ)
