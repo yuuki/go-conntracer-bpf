@@ -6,7 +6,8 @@ GOLINT = $$(go env GOPATH)/bin/golint -set_exit_status $$(go list -mod=vendor ./
 
 SUDO := sudo -E
 OUTPUT := .output
-CLANG ?= clang
+CMD_CLANG ?= clang
+CMD_DOCKER ?= docker
 LLVM_STRIP ?= llvm-strip
 BPFTOOL ?= $(abspath tools/bpftool)
 LIBBPF_SRC := $(abspath libbpf/src)
@@ -18,6 +19,8 @@ CFLAGS := -g -Wall
 ARCH_UNAME := $(shell uname -m)
 ARCH ?= $(ARCH_UNAME:aarch64=arm64)
 BPF_DEBUG ?= 0
+
+DOCKER_BUILDER ?= $(TOOL)-builder
 
 BPF_PROGS = conntracer conntracer_without_aggr
 
@@ -54,7 +57,7 @@ $(LIBBPF_OBJ): $(wildcard $(LIBBPF_SRC)/*.[ch] $(LIBBPF_SRC)/Makefile) | $(OUTPU
 linux_arch := $(ARCH:x86_64=x86)
 $(OUTPUT)/%.bpf.o: $(BPF_SRC_DIR)/%.bpf.c $(LIBBPF_OBJ) $(wildcard %.h) $(BPF_SRC_DIR)/vmlinux.h | $(OUTPUT)
 	$(call msg,BPF,$@)
-	@$(CLANG) -g -O2 -target bpf -fPIE -D__TARGET_ARCH_$(linux_arch) -DDEBUG=$(BPF_DEBUG) $(INCLUDES) -c $(filter %.c,$^) -o $@
+	@$(CMD_CLANG) -g -O2 -target bpf -fPIE -D__TARGET_ARCH_$(linux_arch) -DDEBUG=$(BPF_DEBUG) $(INCLUDES) -c $(filter %.c,$^) -o $@
 	@$(LLVM_STRIP) -g $@ # strip useless DWARF info
 
 # Generate BPF skeletons
@@ -63,7 +66,12 @@ $(INCLUDE_DIR)/%.skel.h: $(OUTPUT)/%.bpf.o | $(OUTPUT)
 	@$(BPFTOOL) gen skeleton $< > $@
 
 .PHONY: bpf
+ifndef DOCKER
 bpf: goclean $(patsubst %,$(INCLUDE_DIR)/%.skel.h,$(BPF_PROGS))
+else
+bpf: $(DOCKER_BUILDER)
+	$(call docker_builder_make,$@)
+endif
 
 .PHONY: bpf/clean
 bpf/clean:
@@ -73,20 +81,35 @@ bpf/clean:
 
 go_env := GOOS=linux GOARCH=$(ARCH:x86_64=amd64) CGO_CFLAGS="-I $(INCLUDE_DIR) -Wno-implicit-function-declaration" CGO_LDFLAGS="$(abspath $(LIBBPF_OBJ)) -lelf -lz"
 
+ifndef DOCKER
 $(TOOL): bpf $(LIBBPF_OBJ) $(filter-out *_test.go,$(GO_SRC))
 	$(call msg,BINARY,$@)
 	@$(go_env) $(GO) build -mod vendor ./tools/$@
+else 
+$(TOOL): $(DOCKER_BUILDER)
+	$(call docker_builder_make,$@)
+endif
 
 .PHONY: verify
+ifndef DOCKER
 verify: bpf $(LIBBPF_OBJ)
 	$(call msg,VERIFY)
 	@$(go_env) $(GO) build -mod vendor ./tools/verifier
 	@$(SUDO) ./verifier
+else 
+verify: $(DOCKER_BUILDER)
+	$(call docker_builder_make,$@)
+endif
 
 .PHONY: test
+ifndef DOCKER
 test: bpf $(LIBBPF_OBJ)
 	$(call msg,TEST)
 	@$(go_env) $(SUDO) $(GO) test -v .
+else
+test: $(DOCKER_BUILDER)
+	$(call docker_builder_make,$@)
+endif
 
 .PHONY: lint
 lint: $(filter-out *_test.go,$(GO_SRC))
@@ -99,14 +122,25 @@ tidy:
 	@go mod tidy
 	@go mod vendor
 
-.PHONY: clean
-clean: goclean
-	$(call msg,CLEAN)
-	@rm -rf $(OUTPUT) $(TOOL)
-
 .PNONY: goclean
 goclean:
 	@go clean -x -cache -testcache >/dev/null
+
+docker_builder_file := $(OUTPUT)/$(DOCKER_BUILDER)
+.PHONY: $(DOCKER_BUILDER)
+$(DOCKER_BUILDER) $(docker_builder_file) &: tools/$(TOOL)/Dockerfile.builder | $(OUTPUT)
+	$(CMD_DOCKER) build -t $(DOCKER_BUILDER) --iidfile $(docker_builder_file) - < $<
+
+define docker_builder_make
+	$(CMD_DOCKER) run --rm -v $(abspath .):/conntop \
+	--entrypoint make $(DOCKER_BUILDER) $(1)
+endef
+
+.PHONY: clean
+clean: goclean
+	$(call msg,CLEAN)
+	-$(CMD_DOCKER) rmi $(file < $(docker_builder_file))
+	-rm -rf $(OUTPUT) $(TOOL)
 
 # delete failed targets
 .DELETE_ON_ERROR:
