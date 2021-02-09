@@ -75,7 +75,12 @@ go_env := GOOS=linux GOARCH=$(ARCH:x86_64=amd64) CGO_CFLAGS="-I $(INCLUDE_DIR) -
 
 $(TOOL): bpf $(LIBBPF_OBJ) $(filter-out *_test.go,$(GO_SRC))
 	$(call msg,BINARY,$@)
-	@$(go_env) go build -mod vendor ./tools/$@
+	@$(go_env) $(GO) build -mod vendor ./tools/$@
+
+.PHONY: verify
+verify: bpf $(LIBBPF_OBJ)
+	$(call msg,VERIFY)
+	@$(go_env) $(SUDO) $(GO) run -mod vendor ./tools/verifier
 
 .PHONY: test
 test: bpf $(LIBBPF_OBJ)
