@@ -318,11 +318,11 @@ int tracepoint__syscalls__sys_enter_bind(struct trace_event_raw_sys_enter* ctx) 
 
     __u16 sin_port = 0;
     sa_family_t family = 0;
-    bpf_probe_read(&family, sizeof(sa_family_t), &addr->sa_family);
+    bpf_probe_read_user(&family, sizeof(sa_family_t), &addr->sa_family);
     if (family == AF_INET) {
-        bpf_probe_read(&sin_port, sizeof(u16), &(((struct sockaddr_in*)addr)->sin_port));
+        bpf_probe_read_user(&sin_port, sizeof(u16), &(((struct sockaddr_in*)addr)->sin_port));
     } else if (family == AF_INET6) {
-        bpf_probe_read(&sin_port, sizeof(u16), &(((struct sockaddr_in6*)addr)->sin6_port));
+        bpf_probe_read_user(&sin_port, sizeof(u16), &(((struct sockaddr_in6*)addr)->sin6_port));
     }
 
     sin_port = bpf_ntohs(sin_port);
