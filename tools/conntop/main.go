@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"runtime"
 	"sync"
 	"time"
 
@@ -17,6 +18,7 @@ var streaming bool
 
 func init() {
 	log.SetFlags(0)
+	runtime.GOMAXPROCS(1)
 
 	flag.DurationVar(&interval, "interval", 3*time.Second, "polling interval (default 3s)")
 	flag.BoolVar(&streaming, "streaming", false, "without aggregation (default false)")
