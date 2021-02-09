@@ -21,6 +21,7 @@ ARCH ?= $(ARCH_UNAME:aarch64=arm64)
 BPF_DEBUG ?= 0
 
 DOCKER_BUILDER ?= $(TOOL)-builder
+OUT_DOCKER ?= conntracer-conntop
 
 BPF_PROGS = conntracer conntracer_without_aggr
 
@@ -141,6 +142,10 @@ clean: goclean
 	$(call msg,CLEAN)
 	-$(CMD_DOCKER) rmi $(file < $(docker_builder_file))
 	-rm -rf $(OUTPUT) $(TOOL)
+
+.PHONY: docker
+docker:
+	$(CMD_DOCKER) build -t $(OUT_DOCKER):latest .
 
 # delete failed targets
 .DELETE_ON_ERROR:
