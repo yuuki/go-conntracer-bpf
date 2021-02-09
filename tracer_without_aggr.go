@@ -13,6 +13,20 @@ package conntracer
 #include "conntracer_without_aggr.skel.h"
 #include "conntracer.h"
 
+int libbpf_print_fn(enum libbpf_print_level level,
+						const char *format, va_list args)
+{
+	// Ignore debug-level libbpf logs
+	if (level > LIBBPF_INFO) {
+		return 0;
+	}
+	return vfprintf(stderr, format, args);
+}
+
+void set_print_fn() {
+	libbpf_set_print(libbpf_print_fn);
+}
+
 // The gateway function for function pointer callbacks
 // https://github.com/golang/go/wiki/cgo#function-pointer-callbacks
 int handle_flow_cgo(void *ctx, void *data, size_t data_sz) {
@@ -37,6 +51,8 @@ type TracerWithoutAggr struct {
 
 // NewTracerWithoutAggr loads tracer without aggregation
 func NewTracerWithoutAggr() (*TracerWithoutAggr, error) {
+	C.set_print_fn()
+
 	// Bump RLIMIT_MEMLOCK to allow BPF sub-system to do anything
 	if err := bumpMemlockRlimit(); err != nil {
 		return nil, err
