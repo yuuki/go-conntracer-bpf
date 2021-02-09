@@ -14,23 +14,35 @@ import (
 )
 
 var interval time.Duration
-var streaming bool
+var userAggr bool
+var kernelAggr bool
 
 func init() {
 	log.SetFlags(0)
 	runtime.GOMAXPROCS(1)
 
 	flag.DurationVar(&interval, "interval", 3*time.Second, "polling interval (default 3s)")
-	flag.BoolVar(&streaming, "streaming", false, "without aggregation (default false)")
+	flag.BoolVar(&userAggr, "user-aggr", false, "in user space aggregation")
+	flag.BoolVar(&kernelAggr, "kernel-aggr", true, "in kernel space aggregation")
 	flag.Parse()
 }
 
 func main() {
-	if streaming {
-		runStreaming()
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, os.Kill)
+	log.Printf("Waiting interval %s for flows to be collected...\n", interval)
+
+	if kernelAggr {
+		runKernelAggr(sig)
 		return
 	}
+	if userAggr {
+		runUserAggr(sig)
+		return
+	}
+}
 
+func runKernelAggr(sig chan os.Signal) {
 	t, err := conntracer.NewTracer()
 	if err != nil {
 		log.Println(err)
@@ -57,10 +69,6 @@ func main() {
 		return
 	}
 
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt, os.Kill)
-	log.Printf("Waiting interval %s for flows to be collected...\n", interval)
-
 	// print header
 	fmt.Printf("%-25s %-25s %-20s %-10s %-20s %-10s\n", "LADDR", "RADDR", "LPORT", "PID", "COMM", "CONNECTIONS")
 
@@ -76,7 +84,7 @@ type connAggrTuple struct {
 	LPort uint16
 }
 
-func runStreaming() {
+func runUserAggr(sig chan os.Signal) {
 	t, err := conntracer.NewTracerWithoutAggr()
 	if err != nil {
 		log.Println(err)
@@ -98,9 +106,6 @@ func runStreaming() {
 		}
 	}
 
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt, os.Kill)
-	log.Printf("Waiting interval %s for flows to be collected...\n", interval)
 	// print header
 	fmt.Printf("%-25s %-25s %-20s %-10s %-10s\n", "LADDR", "RADDR", "LPORT", "PID", "COMM")
 
