@@ -13,6 +13,8 @@ package conntracer
 #include "conntracer_without_aggr.skel.h"
 #include "conntracer.h"
 
+extern int handleFlow(void *ctx, void *data, size_t size);
+
 int libbpf_print_fn(enum libbpf_print_level level,
 						const char *format, va_list args)
 {
@@ -27,10 +29,14 @@ void set_print_fn() {
 	libbpf_set_print(libbpf_print_fn);
 }
 
-// The gateway function for function pointer callbacks
-// https://github.com/golang/go/wiki/cgo#function-pointer-callbacks
-int handle_flow_cgo(void *ctx, void *data, size_t data_sz) {
-	return handleFlow(ctx, data, data_sz);
+struct ring_buffer * new_ring_buf(int map_fd) {
+	struct ring_buffer *rb = NULL;
+	rb = ring_buffer__new(map_fd, handleFlow, NULL, NULL);
+	if (rb < 0) {
+		fprintf(stderr, "failed to cretae ring buffer!\n");
+        return NULL;
+	}
+	return rb;
 }
 */
 import "C"
@@ -38,7 +44,7 @@ import "C"
 import (
 	"errors"
 	"fmt"
-	"unsafe"
+	"syscall"
 )
 
 // TracerWithoutAggr is an object for state retention without aggregation.
@@ -70,10 +76,7 @@ func NewTracerWithoutAggr() (*TracerWithoutAggr, error) {
 	}
 
 	// Set up BPF ring buffer polling.
-	rb := C.ring_buffer__new(
-		C.bpf_map__fd(obj.maps.flows),
-		(C.ring_buffer_sample_fn)(unsafe.Pointer(C.handle_flow_cgo)),
-		nil, nil)
+	rb := C.new_ring_buf(C.bpf_map__fd(obj.maps.flows))
 	if rb == nil {
 		return nil, fmt.Errorf("failed to create ring buffer")
 	}
@@ -99,15 +102,14 @@ func (t *TracerWithoutAggr) Start(fc chan *Flow) error {
 		case <-t.stopChan:
 			return nil
 		default:
-		}
-
-		ret, err := C.ring_buffer__poll(t.rb, 100 /* timeout, ms */)
-		/* Ctrl-C will cause -EINTR */
-		if ret == -C.EINTR {
-			break
-		}
-		if ret < 0 {
-			return fmt.Errorf("error polling ring buffer: %s", err)
+			err := C.ring_buffer__poll(t.rb, 300 /* timeout, ms */)
+			if err < 0 {
+				/* Ctrl-C will cause -EINTR */
+				if syscall.Errno(-err) == syscall.EINTR {
+					break
+				}
+				return fmt.Errorf("error polling ring buffer: %d", err)
+			}
 		}
 	}
 	return nil

@@ -4,14 +4,11 @@ package conntracer
 // Due to the restriction of //export,
 // function definitions must be placed in preambles in other files.
 // https://golang.org/cmd/cgo/#hdr-C_references_to_Go
-#cgo CFLAGS: -I${SRCDIR}/include
 
-#include <stddef.h>
+#cgo CFLAGS: -I${SRCDIR}/include
 
 #include "conntracer.skel.h"
 #include "conntracer.h"
-
-int handleFlow(void *ctx, void *data, size_t data_sz);
 */
 import "C"
 import (
@@ -19,7 +16,7 @@ import (
 )
 
 //export handleFlow
-func handleFlow(ctx unsafe.Pointer, data unsafe.Pointer, dataSZ C.size_t) C.int {
+func handleFlow(ctx unsafe.Pointer, data unsafe.Pointer, dataSZ C.__u32) C.int {
 	cflow := (*C.struct_flow)(data)
 	saddr := inetNtop((uint32)(cflow.saddr))
 	daddr := inetNtop((uint32)(cflow.daddr))
