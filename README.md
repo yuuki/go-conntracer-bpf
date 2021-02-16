@@ -39,6 +39,16 @@ go-conntracer-bpf makes use of some latest features of Linux kernel.
 
 - [godoc](https://godoc.org/github.com/yuuki/go-conntracer-bpf)
 
+## conntop
+
+conntop is a CLI tool to show connection events.
+
+### Build conntop
+
+```shell-session
+$ make DOCKER=1
+```
+
 ## Projects using go-conntracer-bpf
 
 - [yuuki/shawk](https://github.com/yuuki/shawk)
