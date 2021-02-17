@@ -23,7 +23,7 @@ func init() {
 
 	flag.DurationVar(&interval, "interval", 3*time.Second, "polling interval (default 3s)")
 	flag.BoolVar(&userAggr, "user-aggr", false, "in user space aggregation")
-	flag.BoolVar(&kernelAggr, "kernel-aggr", true, "in kernel space aggregation")
+	flag.BoolVar(&kernelAggr, "kernel-aggr", false, "in kernel space aggregation")
 	flag.Parse()
 }
 
@@ -31,6 +31,11 @@ func main() {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, os.Kill)
 	log.Printf("Waiting interval %s for flows to be collected...\n", interval)
+
+	if !kernelAggr && !userAggr {
+		// default is kernelAggr
+		kernelAggr = true
+	}
 
 	if kernelAggr {
 		runKernelAggr(sig)
