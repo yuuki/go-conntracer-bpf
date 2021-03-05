@@ -48,6 +48,11 @@ import (
 	"time"
 )
 
+const (
+	// BPFRingbufPollingInterval is an interval of polling events in the ringbuffer.
+	BPFRingbufPollingInterval = 50 * time.Millisecond
+)
+
 // TracerWithoutAggr is an object for state retention without aggregation.
 type TracerWithoutAggr struct {
 	obj *C.struct_conntracer_without_aggr_bpf
@@ -98,7 +103,7 @@ func (t *TracerWithoutAggr) Start(fc chan *Flow) error {
 		return err
 	}
 
-	tick := time.NewTicker(50 * time.Millisecond)
+	tick := time.NewTicker(BPFRingbufPollingInterval)
 	defer tick.Stop()
 
 	for {
