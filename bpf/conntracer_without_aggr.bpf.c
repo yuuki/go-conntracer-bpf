@@ -66,8 +66,10 @@ insert_flows(pid_t pid, struct sock *sk, __u16 lport, __u8 direction)
 	struct flow *flow;
 
 	flow = bpf_ringbuf_reserve(&flows, sizeof(*flow), 0);
-	if (!flow)
+	if (!flow) {
+		log_debug("insert_tcp_flows: could not reserve ringbuf pid:%d\n", pid);
 		return;
+	}
 
 	flow->ts_us = bpf_ktime_get_ns() / 1000;
 	BPF_CORE_READ_INTO(&flow->saddr, sk, __sk_common.skc_rcv_saddr);
@@ -86,8 +88,10 @@ insert_udp_flows(pid_t pid, struct ipv4_flow_key* flow_key)
 	struct flow *flow;
 
 	flow = bpf_ringbuf_reserve(&flows, sizeof(*flow), 0);
-	if (!flow)
+	if (!flow) {
+		log_debug("insert_udp_flows: could not reserve ringbuf pid:%d\n", pid);
 		return;
+	}
 
 	flow->ts_us = bpf_ktime_get_ns() / 1000;
 	flow->saddr = flow_key->saddr;
