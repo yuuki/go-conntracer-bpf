@@ -4,6 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"runtime"
@@ -16,6 +18,7 @@ import (
 var interval time.Duration
 var userAggr bool
 var kernelAggr bool
+var prof bool
 
 func init() {
 	log.SetFlags(0)
@@ -24,6 +27,7 @@ func init() {
 	flag.DurationVar(&interval, "interval", 3*time.Second, "polling interval (default 3s)")
 	flag.BoolVar(&userAggr, "user-aggr", false, "in user space aggregation")
 	flag.BoolVar(&kernelAggr, "kernel-aggr", false, "in kernel space aggregation")
+	flag.BoolVar(&prof, "prof", false, "pprof http://localhost:6060")
 	flag.Parse()
 }
 
@@ -31,6 +35,12 @@ func main() {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, os.Kill)
 	log.Printf("Waiting interval %s for flows to be collected...\n", interval)
+
+	if prof {
+		go func() {
+			log.Println(http.ListenAndServe("localhost:9876", nil))
+		}()
+	}
 
 	if !kernelAggr && !userAggr {
 		// default is kernelAggr
