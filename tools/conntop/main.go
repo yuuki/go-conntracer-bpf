@@ -38,7 +38,7 @@ func main() {
 
 	if prof {
 		go func() {
-			log.Println(http.ListenAndServe("localhost:9876", nil))
+			log.Println(http.ListenAndServe("localhost:6060", nil))
 		}()
 	}
 
