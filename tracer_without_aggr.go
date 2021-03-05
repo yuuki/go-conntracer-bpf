@@ -45,6 +45,12 @@ import (
 	"errors"
 	"fmt"
 	"syscall"
+	"time"
+)
+
+const (
+	// BPFRingbufPollingInterval is an interval of polling events in the ringbuffer.
+	BPFRingbufPollingInterval = 50 * time.Millisecond
 )
 
 // TracerWithoutAggr is an object for state retention without aggregation.
@@ -97,18 +103,21 @@ func (t *TracerWithoutAggr) Start(fc chan *Flow) error {
 		return err
 	}
 
+	tick := time.NewTicker(BPFRingbufPollingInterval)
+	defer tick.Stop()
+
 	for {
 		select {
 		case <-t.stopChan:
 			return nil
-		default:
-			err := C.ring_buffer__poll(t.rb, 300 /* timeout, ms */)
-			if err < 0 {
+		case <-tick.C:
+			n := C.ring_buffer__poll(t.rb, 10 /* timeout, ms */)
+			if n < 0 {
 				/* Ctrl-C will cause -EINTR */
-				if syscall.Errno(-err) == syscall.EINTR {
+				if syscall.Errno(-n) == syscall.EINTR {
 					break
 				}
-				return fmt.Errorf("error polling ring buffer: %d", err)
+				return fmt.Errorf("error polling ring buffer: %d", n)
 			}
 		}
 	}

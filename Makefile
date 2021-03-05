@@ -140,8 +140,8 @@ endef
 .PHONY: clean
 clean: goclean
 	$(call msg,CLEAN)
-	-$(CMD_DOCKER) rmi $(file < $(docker_builder_file))
 	-rm -rf $(OUTPUT) $(TOOL)
+	-$(CMD_DOCKER) rmi $(file < $(docker_builder_file))
 
 .PHONY: docker
 docker:
