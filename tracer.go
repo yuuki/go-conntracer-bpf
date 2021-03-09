@@ -80,13 +80,19 @@ type FlowStat struct {
 type Tracer struct {
 	obj      *C.struct_conntracer_bpf
 	stopChan chan struct{}
+	statsFd  int
 
 	// option
 	batchSize int
 }
 
+// TracerParam is a parameter for NewTracer.
+type TracerParam struct {
+	Stats bool
+}
+
 // NewTracer creates a Tracer object.
-func NewTracer() (*Tracer, error) {
+func NewTracer(param *TracerParam) (*Tracer, error) {
 	// Bump RLIMIT_MEMLOCK to allow BPF sub-system to do anything
 	if err := bumpMemlockRlimit(); err != nil {
 		return nil, err
@@ -107,12 +113,24 @@ func NewTracer() (*Tracer, error) {
 		stopChan:  make(chan struct{}),
 		batchSize: defaultFlowMapOpsBatchSize,
 	}
+
+	if param.Stats {
+		fd, err := enableBPFStats()
+		if err != nil {
+			return nil, err
+		}
+		t.statsFd = fd
+	}
+
 	return t, nil
 }
 
 // Close closes tracer.
 func (t *Tracer) Close() {
 	close(t.stopChan)
+	if t.statsFd != 0 {
+		syscall.Close(t.statsFd)
+	}
 	C.conntracer_bpf__destroy(t.obj)
 }
 
