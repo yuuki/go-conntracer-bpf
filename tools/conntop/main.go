@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	_ "net/http/pprof"
@@ -15,10 +17,12 @@ import (
 	conntracer "github.com/yuuki/go-conntracer-bpf"
 )
 
-var interval time.Duration
-var userAggr bool
-var kernelAggr bool
-var prof bool
+var (
+	interval   time.Duration
+	userAggr   bool
+	kernelAggr bool
+	prof       bool
+)
 
 func init() {
 	log.SetFlags(0)
@@ -27,7 +31,7 @@ func init() {
 	flag.DurationVar(&interval, "interval", 3*time.Second, "polling interval (default 3s)")
 	flag.BoolVar(&userAggr, "user-aggr", false, "in user space aggregation")
 	flag.BoolVar(&kernelAggr, "kernel-aggr", false, "in kernel space aggregation")
-	flag.BoolVar(&prof, "prof", false, "pprof http://localhost:6060")
+	flag.BoolVar(&prof, "prof", false, "bpf prof and pprof http://localhost:6060")
 	flag.Parse()
 }
 
@@ -35,12 +39,6 @@ func main() {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, os.Kill)
 	log.Printf("Waiting interval %s for flows to be collected...\n", interval)
-
-	if prof {
-		go func() {
-			log.Println(http.ListenAndServe("localhost:6060", nil))
-		}()
-	}
 
 	if !kernelAggr && !userAggr {
 		// default is kernelAggr
@@ -58,12 +56,34 @@ func main() {
 }
 
 func runKernelAggr(sig chan os.Signal) {
-	t, err := conntracer.NewTracer()
+	t, err := conntracer.NewTracer(&conntracer.TracerParam{Stats: true})
 	if err != nil {
 		log.Println(err)
 		os.Exit(-1)
 	}
 	defer t.Close()
+
+	if prof {
+		http.HandleFunc("/bpf/stats", func(w http.ResponseWriter, req *http.Request) {
+			stats, err := t.GetStats()
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				io.WriteString(w, fmt.Sprintf("%+v", err))
+				return
+			}
+			res, err := json.Marshal(stats)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				io.WriteString(w, fmt.Sprintf("%+v", err))
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			w.Write(res)
+		})
+		go func() {
+			log.Println(http.ListenAndServe("localhost:6060", nil))
+		}()
+	}
 
 	printFlow := func(flows []*conntracer.Flow) error {
 		for _, flow := range flows {
@@ -106,6 +126,15 @@ func runUserAggr(sig chan os.Signal) {
 		os.Exit(-1)
 	}
 	defer t.Close()
+
+	if prof {
+		http.HandleFunc("/bpf/stats", func(w http.ResponseWriter, req *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
+		go func() {
+			log.Println(http.ListenAndServe("localhost:6060", nil))
+		}()
+	}
 
 	flowChan := make(chan *conntracer.Flow)
 	go t.Start(flowChan)
