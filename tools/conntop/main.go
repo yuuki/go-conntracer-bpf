@@ -55,6 +55,28 @@ func main() {
 	}
 }
 
+func serveProfiler(getStats func() (map[int]*conntracer.BpfProgramStats, error)) {
+	http.HandleFunc("/bpf/stats", func(w http.ResponseWriter, req *http.Request) {
+		stats, err := getStats()
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			io.WriteString(w, fmt.Sprintf("%+v", err))
+			return
+		}
+		res, err := json.Marshal(stats)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			io.WriteString(w, fmt.Sprintf("%+v", err))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write(res)
+	})
+	go func() {
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
+}
+
 func runKernelAggr(sig chan os.Signal) {
 	t, err := conntracer.NewTracer(&conntracer.TracerParam{Stats: true})
 	if err != nil {
@@ -64,25 +86,7 @@ func runKernelAggr(sig chan os.Signal) {
 	defer t.Close()
 
 	if prof {
-		http.HandleFunc("/bpf/stats", func(w http.ResponseWriter, req *http.Request) {
-			stats, err := t.GetStats()
-			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				io.WriteString(w, fmt.Sprintf("%+v", err))
-				return
-			}
-			res, err := json.Marshal(stats)
-			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				io.WriteString(w, fmt.Sprintf("%+v", err))
-				return
-			}
-			w.WriteHeader(http.StatusOK)
-			w.Write(res)
-		})
-		go func() {
-			log.Println(http.ListenAndServe("localhost:6060", nil))
-		}()
+		serveProfiler(t.GetStats)
 	}
 
 	printFlow := func(flows []*conntracer.Flow) error {
@@ -120,7 +124,7 @@ type connAggrTuple struct {
 }
 
 func runUserAggr(sig chan os.Signal) {
-	t, err := conntracer.NewTracerWithoutAggr()
+	t, err := conntracer.NewTracerWithoutAggr(&conntracer.TracerParam{Stats: true})
 	if err != nil {
 		log.Println(err)
 		os.Exit(-1)
@@ -128,12 +132,7 @@ func runUserAggr(sig chan os.Signal) {
 	defer t.Close()
 
 	if prof {
-		http.HandleFunc("/bpf/stats", func(w http.ResponseWriter, req *http.Request) {
-			w.WriteHeader(http.StatusOK)
-		})
-		go func() {
-			log.Println(http.ListenAndServe("localhost:6060", nil))
-		}()
+		serveProfiler(t.GetStats)
 	}
 
 	flowChan := make(chan *conntracer.Flow)
