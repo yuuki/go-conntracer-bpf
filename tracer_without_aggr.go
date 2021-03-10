@@ -55,14 +55,14 @@ const (
 
 // TracerWithoutAggr is an object for state retention without aggregation.
 type TracerWithoutAggr struct {
-	obj *C.struct_conntracer_without_aggr_bpf
-	rb  *C.struct_ring_buffer
-
+	obj      *C.struct_conntracer_without_aggr_bpf
+	rb       *C.struct_ring_buffer
 	stopChan chan struct{}
+	statsFd  int
 }
 
 // NewTracerWithoutAggr loads tracer without aggregation
-func NewTracerWithoutAggr() (*TracerWithoutAggr, error) {
+func NewTracerWithoutAggr(param *TracerParam) (*TracerWithoutAggr, error) {
 	C.set_print_fn()
 
 	// Bump RLIMIT_MEMLOCK to allow BPF sub-system to do anything
@@ -87,9 +87,21 @@ func NewTracerWithoutAggr() (*TracerWithoutAggr, error) {
 		return nil, fmt.Errorf("failed to create ring buffer")
 	}
 
-	stopChan := make(chan struct{})
+	t := &TracerWithoutAggr{
+		obj:      obj,
+		rb:       rb,
+		stopChan: make(chan struct{}),
+	}
 
-	return &TracerWithoutAggr{obj: obj, rb: rb, stopChan: stopChan}, nil
+	if param.Stats {
+		fd, err := enableBPFStats()
+		if err != nil {
+			return nil, err
+		}
+		t.statsFd = fd
+	}
+
+	return t, nil
 }
 
 // TODO: sync.Pool
@@ -132,10 +144,28 @@ func (t *TracerWithoutAggr) Stop() {
 // Close closes tracer.
 func (t *TracerWithoutAggr) Close() {
 	close(t.stopChan)
+	if t.statsFd != 0 {
+		syscall.Close(t.statsFd)
+	}
 	C.ring_buffer__free(t.rb)
 	C.conntracer_without_aggr_bpf__destroy(t.obj)
 }
 
 func (t *TracerWithoutAggr) udpPortBindingMapFD() C.int {
 	return C.bpf_map__fd(t.obj.maps.udp_port_binding)
+}
+
+// GetStats fetches stats of BPF program.
+func (t *TracerWithoutAggr) GetStats() (map[int]*BpfProgramStats, error) {
+	res := map[int]*BpfProgramStats{}
+	for prog := C.bpf_program__next(nil, t.obj.obj); prog != nil; prog = C.bpf_program__next((*C.struct_bpf_program)(prog), t.obj.obj) {
+		fd := int(C.bpf_program__fd(prog))
+		name := C.GoString(C.bpf_program__name(prog))
+		stats, err := getProgramStats(fd, name)
+		if err != nil {
+			return nil, err
+		}
+		res[fd] = stats
+	}
+	return res, nil
 }

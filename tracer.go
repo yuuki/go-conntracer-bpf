@@ -80,13 +80,19 @@ type FlowStat struct {
 type Tracer struct {
 	obj      *C.struct_conntracer_bpf
 	stopChan chan struct{}
+	statsFd  int
 
 	// option
 	batchSize int
 }
 
+// TracerParam is a parameter for NewTracer.
+type TracerParam struct {
+	Stats bool
+}
+
 // NewTracer creates a Tracer object.
-func NewTracer() (*Tracer, error) {
+func NewTracer(param *TracerParam) (*Tracer, error) {
 	// Bump RLIMIT_MEMLOCK to allow BPF sub-system to do anything
 	if err := bumpMemlockRlimit(); err != nil {
 		return nil, err
@@ -107,12 +113,24 @@ func NewTracer() (*Tracer, error) {
 		stopChan:  make(chan struct{}),
 		batchSize: defaultFlowMapOpsBatchSize,
 	}
+
+	if param.Stats {
+		fd, err := enableBPFStats()
+		if err != nil {
+			return nil, err
+		}
+		t.statsFd = fd
+	}
+
 	return t, nil
 }
 
 // Close closes tracer.
 func (t *Tracer) Close() {
 	close(t.stopChan)
+	if t.statsFd != 0 {
+		syscall.Close(t.statsFd)
+	}
 	C.conntracer_bpf__destroy(t.obj)
 }
 
@@ -217,4 +235,19 @@ func dumpFlows(fd C.int) ([]*Flow, error) {
 	}
 
 	return flows, nil
+}
+
+// GetStats fetches stats of BPF program.
+func (t *Tracer) GetStats() (map[int]*BpfProgramStats, error) {
+	res := map[int]*BpfProgramStats{}
+	for prog := C.bpf_program__next(nil, t.obj.obj); prog != nil; prog = C.bpf_program__next((*C.struct_bpf_program)(prog), t.obj.obj) {
+		fd := int(C.bpf_program__fd(prog))
+		name := C.GoString(C.bpf_program__name(prog))
+		stats, err := getProgramStats(fd, name)
+		if err != nil {
+			return nil, err
+		}
+		res[fd] = stats
+	}
+	return res, nil
 }
