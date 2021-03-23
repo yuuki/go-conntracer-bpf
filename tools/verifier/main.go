@@ -21,7 +21,7 @@ func main() {
 	t1.Close()
 
 	log.Println("Loading conntracer without aggregation...")
-	t2, err := conntracer.NewTracerWithoutAggr()
+	t2, err := conntracer.NewTracerStreaming()
 	if err != nil {
 		log.Println(err)
 		os.Exit(-1)
