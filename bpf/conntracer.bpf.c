@@ -17,22 +17,6 @@ char LICENSE[] SEC("license") = "Dual BSD/GPL";
 #define AF_INET		2
 #define AF_INET6	10
 
-struct {
-	__uint(type, BPF_MAP_TYPE_HASH);
-	__uint(max_entries, MAX_ENTRIES);
-	__type(key, u32);
-	__type(value, struct sock *);
-	__uint(map_flags, BPF_F_NO_PREALLOC);
-} tcp_connect_sockets SEC(".maps");
-
-struct {
-	__uint(type, BPF_MAP_TYPE_HASH);
-	__type(key, struct ipv4_flow_key);
-	__type(value, struct flow);
-	__uint(max_entries, MAX_FLOW_ENTRIES);
-	__uint(map_flags, BPF_F_NO_PREALLOC);
-} flows SEC(".maps");
-
 static __always_inline void
 insert_flows(pid_t pid, struct sock *sk, __u16 lport, __u8 direction)
 {
