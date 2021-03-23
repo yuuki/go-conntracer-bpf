@@ -9,6 +9,7 @@
 #include <bpf/bpf_endian.h>
 
 #include "conntracer.h"
+#include "port_binding.h"
 
 #define AF_INET		2
 #define AF_INET6	10
@@ -27,38 +28,6 @@ struct {
 	__uint(type, BPF_MAP_TYPE_RINGBUF);
 	__uint(max_entries, 256 * 1024 /* 256 KB */);
 } flows SEC(".maps");
-
-// udp_port_binding is a map for tracking LISNING or CLOSED ports.
-// udp_port_binding enables to register entire local ports and 
-// insert or update the port number and state at the timing when the port state changes.
-struct {
-	__uint(type, BPF_MAP_TYPE_HASH);
-	__uint(max_entries, MAX_PORT_BINDING_ENTRIES);
-	__type(key, struct port_binding_key);
-	__type(value, __u8);		// protocol state
-} udp_port_binding SEC(".maps");
-
-struct {
-	__uint(type, BPF_MAP_TYPE_HASH);
-	__type(key, __u64);	 // tid | fd
-	__type(value, __u8); // bool
-	__uint(max_entries, MAX_ENTRIES);
-	__uint(map_flags, BPF_F_NO_PREALLOC);
-} entering_udp_sockets SEC(".maps");
-
-struct {
-	__uint(type, BPF_MAP_TYPE_HASH);
-	__type(key, __u64);	 // tid | fd
-	__type(value, __u8); // bool
-	__uint(max_entries, MAX_ENTRIES);
-} unbound_udp_sockets SEC(".maps");
-
-struct {
-	__uint(type, BPF_MAP_TYPE_HASH);
-	__uint(max_entries, MAX_ENTRIES);
-	__type(key, __u64); // tid
-	__type(value, struct bind_args);
-} entering_bind SEC(".maps");
 
 static __always_inline void
 insert_flows(pid_t pid, struct sock *sk, __u16 lport, __u8 direction)
@@ -235,27 +204,16 @@ int BPF_KPROBE(skb_consume_udp, struct sock *sk, struct sk_buff *skb) {
     return 0;
 }
 
+
 // for tracking UDP listening state
 SEC("tracepoint/syscalls/sys_enter_socket")
 int tracepoint__syscalls__sys_enter_socket(struct trace_event_raw_sys_enter* ctx) {
 	__u64 tid = bpf_get_current_pid_tgid();
 	int family = (int)ctx->args[0];
 	int type = (int)ctx->args[1];
-
 	log_debug("tp/sys_enter_socket: family=%u, type=%u, tid=%u\n", family, type, tid);
 
-	// detect if protocol is udp or not.
-    if ((family & (AF_INET | AF_INET6)) > 0 && (type & SOCK_DGRAM) > 0) {
-		// pass
-    } else {
-		return 0;
-	}
-
-    __u8 ok = 1;
-    bpf_map_update_elem(&entering_udp_sockets, &tid, &ok, BPF_ANY);
-
-    log_debug("sys_enter_socket: found UDP family=%d, type=%d, tid=%u\n", family, type, tid);
-	return 0;
+	return sys_enter_socket(family, type, tid);
 }
 
 // for tracking UDP listening state
@@ -264,33 +222,7 @@ int tracepoint__syscalls__sys_exit_socket(struct trace_event_raw_sys_exit* ctx) 
     __u64 tid = bpf_get_current_pid_tgid();
     log_debug("tp/sys_exit_socket: fd=%d, tid=%u\n", ctx->ret, tid);
 
-    __u8* is_udp = bpf_map_lookup_elem(&entering_udp_sockets, &tid);
-
-    // socket(2) returns a file discriptor.
-    __u64 fd_and_tid = (tid << 32) | ctx->ret;
-
-    if (ctx->ret < 0) {
-        log_debug("sys_exit_socket: socket() call failed, ret=%d, tid=%u\n", ctx->ret, tid);
-		goto end;
-	}
-
-	if (!is_udp) {
-        log_debug("sys_exit_socket: not UDP, fd=%d, tid=%u\n", ctx->ret, tid);
-		goto end;
-    }
-
-    bpf_map_delete_elem(&entering_udp_sockets, &tid);
-
-    __u64 ok = 1;
-    bpf_map_update_elem(&unbound_udp_sockets, &fd_and_tid, &ok, BPF_ANY);
-
-    log_debug("sys_exit_socket: found UDP fd=%d, tid=%u\n", ctx->ret, tid);
-    return 0;
-
-end:
-    bpf_map_delete_elem(&entering_udp_sockets, &tid);
-    bpf_map_delete_elem(&unbound_udp_sockets, &fd_and_tid);
-	return 0;
+	return sys_exit_socket(ctx->ret, tid);
 }
 
 SEC("tracepoint/syscalls/sys_enter_bind")
@@ -300,40 +232,7 @@ int tracepoint__syscalls__sys_enter_bind(struct trace_event_raw_sys_enter* ctx) 
 	const struct sockaddr *addr = (const struct sockaddr *)ctx->args[1];
 
     log_debug("tp/sys_enter_bind: fd=%u, addr=%x, tid=%u\n", fd, addr, tid);
-
-	if (!addr) {
-        return 0;
-    }
-
-    // determine if the fd for this process is an unbound UDP socket.
-    __u64 fd_and_tid = (tid << 32) | fd;
-    __u64* socket = bpf_map_lookup_elem(&unbound_udp_sockets, &fd_and_tid);
-    if (!socket) {
-        return 0;
-    }
-
-    __u16 sin_port = 0;
-    sa_family_t family = 0;
-    bpf_probe_read_user(&family, sizeof(sa_family_t), &addr->sa_family);
-    if (family == AF_INET) {
-        bpf_probe_read_user(&sin_port, sizeof(u16), &(((struct sockaddr_in*)addr)->sin_port));
-    } else if (family == AF_INET6) {
-        bpf_probe_read_user(&sin_port, sizeof(u16), &(((struct sockaddr_in6*)addr)->sin6_port));
-    }
-
-    sin_port = bpf_ntohs(sin_port);
-    if (sin_port == 0) {
-		log_debug("sys_enter_bind: sin_port == 0, family:%d, tid=%u\n", family, tid);
-		return 0;
-    }
-
-	struct bind_args args = {};
-	args.port = sin_port;
-	args.fd = fd;
-	bpf_map_update_elem(&entering_bind, &tid, &args, BPF_ANY);
-
-	log_debug("sys_enter_bind: port=%d fd=%u tid=%u\n", sin_port, fd, tid);
-	return 0;
+	return sys_enter_bind(fd, addr, tid);
 }
 
 SEC("tracepoint/syscalls/sys_exit_bind")
@@ -341,21 +240,5 @@ int tracepoint__syscalls__sys_exit_bind(struct trace_event_raw_sys_exit* ctx) {
     __u64 tid = bpf_get_current_pid_tgid();
 
     log_debug("tp/sys_exit_bind: ret=%d, tid=%u\n", ctx->ret, tid);
-
-    if (ctx->ret != 0) {
-        return 0;
-    }
-
-    struct bind_args* args = bpf_map_lookup_elem(&entering_bind, &tid);
-    if (!args) {
-        return 0;
-    }
-
-	struct port_binding_key key = {};
-	key.port = args->port;
-	__u8 state = PORT_LISTENING;
-	bpf_map_update_elem(&udp_port_binding, &key, &state, BPF_ANY);
-
-    log_debug("sys_exit_bind: UDP port:%u, tid:%u\n", args->port, tid);
-    return 0;
+	return sys_exit_bind(ctx->ret, tid);
 }
