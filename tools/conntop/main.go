@@ -124,7 +124,7 @@ type connAggrTuple struct {
 }
 
 func runUserAggr(sig chan os.Signal) {
-	t, err := conntracer.NewTracerWithoutAggr(&conntracer.TracerParam{Stats: true})
+	t, err := conntracer.NewTracerStreaming(&conntracer.TracerParam{Stats: true})
 	if err != nil {
 		log.Println(err)
 		os.Exit(-1)

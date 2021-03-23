@@ -13,7 +13,7 @@ func init() {
 
 func main() {
 	log.Println("Loading conntracer...")
-	t1, err := conntracer.NewTracer()
+	t1, err := conntracer.NewTracer(&conntracer.TracerParam{})
 	if err != nil {
 		log.Println(err)
 		os.Exit(-1)
@@ -21,7 +21,7 @@ func main() {
 	t1.Close()
 
 	log.Println("Loading conntracer without aggregation...")
-	t2, err := conntracer.NewTracerWithoutAggr()
+	t2, err := conntracer.NewTracerStreaming(&conntracer.TracerParam{})
 	if err != nil {
 		log.Println(err)
 		os.Exit(-1)

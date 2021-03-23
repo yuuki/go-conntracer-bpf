@@ -10,7 +10,7 @@ package conntracer
 
 #include <bpf/libbpf.h>
 #include <bpf/bpf.h>
-#include "conntracer_without_aggr.skel.h"
+#include "conntracer_streaming.skel.h"
 #include "conntracer.h"
 */
 import "C"

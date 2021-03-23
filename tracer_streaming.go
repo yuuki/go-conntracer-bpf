@@ -10,7 +10,7 @@ package conntracer
 
 #include <bpf/libbpf.h>
 #include <bpf/bpf.h>
-#include "conntracer_without_aggr.skel.h"
+#include "conntracer_streaming.skel.h"
 #include "conntracer.h"
 
 extern int handleFlow(void *ctx, void *data, size_t size);
@@ -53,16 +53,16 @@ const (
 	BPFRingbufPollingInterval = 50 * time.Millisecond
 )
 
-// TracerWithoutAggr is an object for state retention without aggregation.
-type TracerWithoutAggr struct {
-	obj      *C.struct_conntracer_without_aggr_bpf
+// TracerStreaming is an object for state retention without aggregation.
+type TracerStreaming struct {
+	obj      *C.struct_conntracer_streaming_bpf
 	rb       *C.struct_ring_buffer
 	stopChan chan struct{}
 	statsFd  int
 }
 
-// NewTracerWithoutAggr loads tracer without aggregation
-func NewTracerWithoutAggr(param *TracerParam) (*TracerWithoutAggr, error) {
+// NewTracerStreaming loads tracer without aggregation
+func NewTracerStreaming(param *TracerParam) (*TracerStreaming, error) {
 	C.set_print_fn()
 
 	// Bump RLIMIT_MEMLOCK to allow BPF sub-system to do anything
@@ -70,14 +70,14 @@ func NewTracerWithoutAggr(param *TracerParam) (*TracerWithoutAggr, error) {
 		return nil, err
 	}
 
-	obj := C.conntracer_without_aggr_bpf__open_and_load()
+	obj := C.conntracer_streaming_bpf__open_and_load()
 	if obj == nil {
 		return nil, errors.New("failed to open and load BPF object")
 	}
 
-	ret, err := C.conntracer_without_aggr_bpf__attach(obj)
+	ret, err := C.conntracer_streaming_bpf__attach(obj)
 	if ret != 0 {
-		C.conntracer_without_aggr_bpf__destroy(obj)
+		C.conntracer_streaming_bpf__destroy(obj)
 		return nil, fmt.Errorf("failed to attach BPF programs: %v", err)
 	}
 
@@ -87,7 +87,7 @@ func NewTracerWithoutAggr(param *TracerParam) (*TracerWithoutAggr, error) {
 		return nil, fmt.Errorf("failed to create ring buffer")
 	}
 
-	t := &TracerWithoutAggr{
+	t := &TracerStreaming{
 		obj:      obj,
 		rb:       rb,
 		stopChan: make(chan struct{}),
@@ -108,7 +108,7 @@ func NewTracerWithoutAggr(param *TracerParam) (*TracerWithoutAggr, error) {
 var globalFlowChan chan *Flow
 
 // Start starts loop of polling events from kernel.
-func (t *TracerWithoutAggr) Start(fc chan *Flow) error {
+func (t *TracerStreaming) Start(fc chan *Flow) error {
 	globalFlowChan = fc
 
 	if err := initializeUDPPortBindingMap(t.udpPortBindingMapFD()); err != nil {
@@ -137,26 +137,26 @@ func (t *TracerWithoutAggr) Start(fc chan *Flow) error {
 }
 
 // Stop stop loop of polling events.
-func (t *TracerWithoutAggr) Stop() {
+func (t *TracerStreaming) Stop() {
 	t.stopChan <- struct{}{}
 }
 
 // Close closes tracer.
-func (t *TracerWithoutAggr) Close() {
+func (t *TracerStreaming) Close() {
 	close(t.stopChan)
 	if t.statsFd != 0 {
 		syscall.Close(t.statsFd)
 	}
 	C.ring_buffer__free(t.rb)
-	C.conntracer_without_aggr_bpf__destroy(t.obj)
+	C.conntracer_streaming_bpf__destroy(t.obj)
 }
 
-func (t *TracerWithoutAggr) udpPortBindingMapFD() C.int {
+func (t *TracerStreaming) udpPortBindingMapFD() C.int {
 	return C.bpf_map__fd(t.obj.maps.udp_port_binding)
 }
 
 // GetStats fetches stats of BPF program.
-func (t *TracerWithoutAggr) GetStats() (map[int]*BpfProgramStats, error) {
+func (t *TracerStreaming) GetStats() (map[int]*BpfProgramStats, error) {
 	res := map[int]*BpfProgramStats{}
 	for prog := C.bpf_program__next(nil, t.obj.obj); prog != nil; prog = C.bpf_program__next((*C.struct_bpf_program)(prog), t.obj.obj) {
 		fd := int(C.bpf_program__fd(prog))
