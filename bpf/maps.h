@@ -13,14 +13,6 @@ struct {
 	__uint(map_flags, BPF_F_NO_PREALLOC);
 } tcp_connect_sockets SEC(".maps");
 
-struct {
-	__uint(type, BPF_MAP_TYPE_HASH);
-	__type(key, struct ipv4_flow_key);
-	__type(value, struct flow);
-	__uint(max_entries, MAX_FLOW_ENTRIES);
-	__uint(map_flags, BPF_F_NO_PREALLOC);
-} flows SEC(".maps");
-
 // udp_port_binding is a map for tracking LISNING or CLOSED ports.
 // udp_port_binding enables to register entire local ports and 
 // insert or update the port number and state at the timing when the port state changes.

@@ -11,14 +11,23 @@
 #include "conntracer.h"
 #include "maps.h"
 #include "port_binding.h"
+#include "conntracer_bpf_read.h"
 
 char LICENSE[] SEC("license") = "Dual BSD/GPL";
 
 #define AF_INET		2
 #define AF_INET6	10
 
+struct {
+	__uint(type, BPF_MAP_TYPE_HASH);
+	__type(key, struct ipv4_flow_key);
+	__type(value, struct flow);
+	__uint(max_entries, MAX_FLOW_ENTRIES);
+	__uint(map_flags, BPF_F_NO_PREALLOC);
+} flows SEC(".maps");
+
 static __always_inline void
-insert_flows(pid_t pid, struct sock *sk, __u16 lport, __u8 direction)
+insert_tcp_flows(pid_t pid, struct sock *sk, __u16 lport, __u8 direction)
 {
 	struct flow flow = {}, *val;
 	struct ipv4_flow_key flow_key = {};
@@ -95,7 +104,7 @@ int BPF_KRETPROBE(tcp_v4_connect_ret, int ret)
 
 	BPF_CORE_READ_INTO(&dport, sk, __sk_common.skc_dport);
 
-	insert_flows(pid, sk, dport, FLOW_ACTIVE);
+	insert_tcp_flows(pid, sk, dport, FLOW_ACTIVE);
 
 	log_debug("kretprobe/tcp_v4_connect: dport:%u, tid:%u\n", dport, pid_tgid);
 end:
@@ -115,7 +124,7 @@ int BPF_KRETPROBE(inet_csk_accept_ret, struct sock *sk)
 
 	BPF_CORE_READ_INTO(&lport, sk, __sk_common.skc_num);
 
-	insert_flows(pid, sk, lport, FLOW_PASSIVE);
+	insert_tcp_flows(pid, sk, lport, FLOW_PASSIVE);
 
 	log_debug("kretprobe/inet_csk_accept: lport:%u,pid_tgid:%u\n", pid_tgid, lport);
 	return 0;
@@ -128,29 +137,13 @@ SEC("kprobe/ip_make_skb")
 int BPF_KPROBE(ip_make_skb, struct sock *sk, struct flowi4 *flw4) {
 	__u64 pid_tgid = bpf_get_current_pid_tgid();
 	__u32 pid = pid_tgid >> 32;
-	__u16 dport, sport;
 	struct ipv4_flow_key flow_key = {};
 
-	BPF_CORE_READ_INTO(&sport, sk, __sk_common.skc_num);
-	BPF_CORE_READ_INTO(&dport, sk, __sk_common.skc_dport);
-
-	__u8 *sstate = bpf_map_lookup_elem(&udp_port_binding, &sport);
-	if (sstate) {
-		BPF_CORE_READ_INTO(&flow_key.saddr, flw4, daddr);
-		BPF_CORE_READ_INTO(&flow_key.daddr, flw4, saddr);
-		flow_key.direction = FLOW_PASSIVE;
-		flow_key.lport = bpf_htons(sport);
-	} else {
-		BPF_CORE_READ_INTO(&flow_key.saddr, flw4, saddr);
-		BPF_CORE_READ_INTO(&flow_key.daddr, flw4, daddr);
-		flow_key.direction = FLOW_ACTIVE;
-		flow_key.lport = dport;
-	}
-	flow_key.l4_proto = IPPROTO_UDP;
-
+	read_flow_for_udp_send(&flow_key, sk, flw4);
 	insert_udp_flows(pid, &flow_key);
 
-	log_debug("kprobe/udp_sendmsg: lport:%u, tgid:%u\n", sport, pid_tgid);
+	log_debug("kprobe/ip_make_skb: sport:%u, dport:%u, tgid:%u\n",
+		flow_key.sport,flow_key.dport, pid_tgid);
 	return 0;
 }
 
@@ -160,34 +153,12 @@ SEC("kprobe/skb_consume_udp")
 int BPF_KPROBE(skb_consume_udp, struct sock *sk, struct sk_buff *skb) {
 	__u64 pid_tgid = bpf_get_current_pid_tgid();
 	__u32 pid = pid_tgid >> 32;
-
-	struct udphdr *udphdr = (struct udphdr *)(BPF_CORE_READ(skb, head)
-		+ BPF_CORE_READ(skb,transport_header));
-	struct iphdr *iphdr = (struct iphdr *)(BPF_CORE_READ(skb, head) + BPF_CORE_READ(skb, network_header));
-
 	struct ipv4_flow_key flow_key = {};
-	__u16 sport = BPF_CORE_READ(udphdr, source);
-	__u16 dport = BPF_CORE_READ(udphdr, dest);
 
-	__u16 dport_key = bpf_htons(dport);
-	__u8 *sstate = bpf_map_lookup_elem(&udp_port_binding, &dport_key);
-	if (sstate) {
-		flow_key.saddr = BPF_CORE_READ(iphdr, saddr);
-		flow_key.daddr = BPF_CORE_READ(iphdr, daddr);
-		flow_key.direction = FLOW_PASSIVE;
-		flow_key.lport = dport;
-	} else {
-		flow_key.saddr = BPF_CORE_READ(iphdr, daddr);
-		flow_key.daddr = BPF_CORE_READ(iphdr, saddr);
-		flow_key.direction = FLOW_ACTIVE;
-		flow_key.lport = sport;
-	}
-
-	flow_key.l4_proto = IPPROTO_UDP;
-
+	read_flow_for_udp_recv(&flow_key, sk, skb);
 	insert_udp_flows(pid, &flow_key);
 
-    log_debug("kprobe/skb_consume_udp: sport:%u, dport:%u, tid:%u\n",
+	log_debug("kprobe/skb_consume_udp: sport:%u, dport:%u, tid:%u\n",
 		sport, dport, pid_tgid);
     return 0;
 }
