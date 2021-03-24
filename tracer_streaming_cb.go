@@ -17,7 +17,7 @@ import (
 
 //export handleFlow
 func handleFlow(ctx unsafe.Pointer, data unsafe.Pointer, dataSZ C.__u32) C.int {
-	cflow := (*C.struct_flow)(data)
+	cflow := (*C.struct_single_flow)(data)
 	saddr := inetNtop((uint32)(cflow.saddr))
 	daddr := inetNtop((uint32)(cflow.daddr))
 	globalFlowChan <- &Flow{

@@ -25,7 +25,7 @@ struct {
 static __always_inline void
 insert_tcp_flows(pid_t pid, struct sock *sk, __u16 lport, __u8 direction)
 {
-	struct flow *flow;
+	struct single_flow *flow;
 
 	flow = bpf_ringbuf_reserve(&flows, sizeof(*flow), 0);
 	if (!flow) {
@@ -47,7 +47,7 @@ insert_tcp_flows(pid_t pid, struct sock *sk, __u16 lport, __u8 direction)
 static __always_inline void
 insert_udp_flows(pid_t pid, struct ipv4_flow_key* flow_key)
 {
-	struct flow *flow;
+	struct single_flow *flow;
 
 	flow = bpf_ringbuf_reserve(&flows, sizeof(*flow), 0);
 	if (!flow) {

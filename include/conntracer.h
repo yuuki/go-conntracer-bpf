@@ -49,13 +49,27 @@ struct flow_stat {
 	// __u16 latency_avg;
 };
 
-struct flow {
+struct aggregated_flow {
 	__u64 ts_us;
     __u32 saddr;  				// source address
     __u32 daddr;  				// destination address
 	char task[TASK_COMM_LEN];
 	__u16 lport;  				// listening port
 	flow_direction direction; 	// 1: "connect"(active), 2: "accept"(passive)
+	__u32 pid;
+	__u8 l4_proto;
+	struct flow_stat stat;
+};
+
+struct single_flow {
+	__u64 ts_us;
+    __u32 saddr;  				// source address
+    __u32 daddr;  				// destination address
+	char task[TASK_COMM_LEN];
+	__u16 sport;  				// source port
+	__u16 dport;  				// source port
+	__u16 lport;                // listening port
+	flow_direction direction;
 	__u32 pid;
 	__u8 l4_proto;
 	struct flow_stat stat;

@@ -21,7 +21,7 @@ char LICENSE[] SEC("license") = "Dual BSD/GPL";
 struct {
 	__uint(type, BPF_MAP_TYPE_HASH);
 	__type(key, struct ipv4_flow_key);
-	__type(value, struct flow);
+	__type(value, struct aggregated_flow);
 	__uint(max_entries, MAX_FLOW_ENTRIES);
 	__uint(map_flags, BPF_F_NO_PREALLOC);
 } flows SEC(".maps");
@@ -29,7 +29,7 @@ struct {
 static __always_inline void
 insert_tcp_flows(pid_t pid, struct sock *sk, __u16 lport, __u8 direction)
 {
-	struct flow flow = {}, *val;
+	struct aggregated_flow flow = {}, *val;
 	struct ipv4_flow_key flow_key = {};
 
 	BPF_CORE_READ_INTO(&flow.saddr, sk, __sk_common.skc_rcv_saddr);
@@ -59,7 +59,7 @@ insert_tcp_flows(pid_t pid, struct sock *sk, __u16 lport, __u8 direction)
 static __always_inline void
 insert_udp_flows(pid_t pid, struct ipv4_flow_key* flow_key)
 {
-	struct flow flow = {};
+	struct aggregated_flow flow = {};
 
 	flow.saddr = flow_key->saddr;
 	flow.daddr = flow_key->daddr;
