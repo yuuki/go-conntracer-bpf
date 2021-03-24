@@ -23,7 +23,7 @@ BPF_DEBUG ?= 0
 DOCKER_BUILDER ?= $(TOOL)-builder
 OUT_DOCKER ?= conntracer-conntop
 
-BPF_PROGS = conntracer conntracer_streaming
+BPF_PROGS = conntracer conntracer_streaming conntracer_in_flow_aggr
 
 msg = @printf '  %-8s %s%s\n'                       \
                 "$(1)"                                          \

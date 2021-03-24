@@ -19,6 +19,7 @@ import (
 
 var (
 	interval   time.Duration
+	inFlowAggr bool
 	userAggr   bool
 	kernelAggr bool
 	prof       bool
@@ -29,8 +30,9 @@ func init() {
 	runtime.GOMAXPROCS(1)
 
 	flag.DurationVar(&interval, "interval", 3*time.Second, "polling interval (default 3s)")
-	flag.BoolVar(&userAggr, "user-aggr", false, "in user space aggregation")
-	flag.BoolVar(&kernelAggr, "kernel-aggr", false, "in kernel space aggregation")
+	flag.BoolVar(&inFlowAggr, "in-flow-aggr", false, "in-kernel in-flow aggregation")
+	flag.BoolVar(&userAggr, "user-aggr", false, "in-user-space aggregation")
+	flag.BoolVar(&kernelAggr, "kernel-aggr", false, "in-kernel multi-flow aggregation")
 	flag.BoolVar(&prof, "prof", false, "bpf prof and pprof http://localhost:6060")
 	flag.Parse()
 }
@@ -40,7 +42,7 @@ func main() {
 	signal.Notify(sig, os.Interrupt, os.Kill)
 	log.Printf("Waiting interval %s for flows to be collected...\n", interval)
 
-	if !kernelAggr && !userAggr {
+	if !kernelAggr && !userAggr && !inFlowAggr {
 		// default is kernelAggr
 		kernelAggr = true
 	}
@@ -51,6 +53,10 @@ func main() {
 	}
 	if userAggr {
 		runUserAggr(sig)
+		return
+	}
+	if inFlowAggr {
+		runInFlowAggr(sig)
 		return
 	}
 }
@@ -184,4 +190,17 @@ func runUserAggr(sig chan os.Signal) {
 	}
 
 	return
+}
+
+func runInFlowAggr(sig chan os.Signal) {
+	t, err := conntracer.NewTracerInFlowAggr(&conntracer.TracerParam{Stats: true})
+	if err != nil {
+		log.Println(err)
+		os.Exit(-1)
+	}
+	defer t.Close()
+
+	if prof {
+		serveProfiler(t.GetStats)
+	}
 }
