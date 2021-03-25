@@ -28,5 +28,13 @@ func main() {
 	}
 	t2.Close()
 
+	log.Println("Loading conntracer without aggregation...")
+	t3, err := conntracer.NewTracerInFlowAggr(&conntracer.TracerParam{})
+	if err != nil {
+		log.Println(err)
+		os.Exit(-1)
+	}
+	t3.Close()
+
 	log.Println("bpf programs have been verified.")
 }
