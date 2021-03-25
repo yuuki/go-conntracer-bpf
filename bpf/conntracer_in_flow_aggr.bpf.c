@@ -45,16 +45,18 @@ insert_tcp_flows(pid_t pid, struct sock *sk, __u8 direction)
 			flow.lport = tuple.sport;
 			break;
 		default:
-			log_debug("unknown direction:%d pid:%u\n", direction, pid_tgid);
+			log_debug("unknown direction:%d pid:%u\n", direction, pid);
 			return;
 	}
-	tuple.pid = flow.pid = pid;
+	tuple.pid = pid;
+	flow.pid = pid;
 	flow.direction = direction;
 	bpf_get_current_comm(flow.task, sizeof(flow.task));
 
 	flow.saddr = tuple.saddr;
 	flow.daddr = tuple.daddr;
-	flow.l4_proto = tuple.l4_proto = IPPROTO_TCP;
+	tuple.l4_proto = IPPROTO_TCP;
+	flow.l4_proto = tuple.l4_proto;
 
 	val = bpf_map_lookup_elem(&flows, &tuple);
 	if (val) {
@@ -72,9 +74,11 @@ insert_udp_flows(struct flow_tuple* tuple, __u8 direction, __u16 lport)
 	flow.daddr = tuple->daddr;
 	flow.sport = tuple->sport;
 	flow.dport = tuple->dport;
+	flow.lport = lport;
 	flow.direction = direction;
 	flow.l4_proto = tuple->l4_proto;
 	flow.pid = tuple->pid;
+	flow.l4_proto = IPPROTO_UDP;
 	bpf_get_current_comm(flow.task, sizeof(flow.task));
 
 	bpf_map_update_elem(&flows, tuple, &flow, BPF_ANY);
@@ -96,24 +100,22 @@ int BPF_KPROBE(tcp_v4_connect, struct sock *sk)
 SEC("kretprobe/tcp_v4_connect")
 int BPF_KRETPROBE(tcp_v4_connect_ret, int ret)
 {
-	__u64 tgid = bpf_get_current_pid_tgid();
-	__u32 pid = tgid >> 32;
-	__u16 dport;
+	__u64 pid_tgid = bpf_get_current_pid_tgid();
+	__u32 pid = pid_tgid >> 32;
+	__u32 tid = pid_tgid;
 
-	struct sock** skpp = bpf_map_lookup_elem(&tcp_connect_sockets, &tgid);
+	struct sock** skpp = bpf_map_lookup_elem(&tcp_connect_sockets, &tid);
 	if (!skpp)
 		return 0;
 
 	if (ret)
 		goto end;
 
-	struct sock* sk = *skpp;
+	insert_tcp_flows(pid, *skpp, FLOW_ACTIVE);
 
-	insert_tcp_flows(pid, sk, FLOW_ACTIVE);
-
-	log_debug("kretprobe/tcp_v4_connect: dport:%u, tid:%u\n", dport, tgid);
+	log_debug("kretprobe/tcp_v4_connect: tgid:%u\n", pid_tgid);
 end:
-	bpf_map_delete_elem(&tcp_connect_sockets, &tgid);
+	bpf_map_delete_elem(&tcp_connect_sockets, &pid_tgid);
 	return 0;
 }
 
@@ -169,7 +171,7 @@ int BPF_KPROBE(skb_consume_udp, struct sock *sk, struct sk_buff *skb) {
 	insert_udp_flows(&tuple, direction, lport);
 
 	log_debug("kprobe/skb_consume_udp: sport:%u, dport:%u, tid:%u\n",
-		sport, dport, tgid);
+		tuple.sport, tuple.dport, tgid);
     return 0;
 }
 

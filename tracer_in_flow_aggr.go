@@ -3,7 +3,10 @@ package conntracer
 import (
 	"errors"
 	"fmt"
+	"log"
 	"syscall"
+	"time"
+	"unsafe"
 )
 
 /*
@@ -68,6 +71,107 @@ func (t *TracerInFlowAggr) Close() {
 		syscall.Close(t.statsFd)
 	}
 	C.conntracer_in_flow_aggr_bpf__destroy(t.obj)
+}
+
+// Start starts polling loop.
+func (t *TracerInFlowAggr) Start(cb func([]*Flow) error, interval time.Duration) error {
+	if err := initializeUDPPortBindingMap(t.udpPortBindingMapFD()); err != nil {
+		return err
+	}
+	go t.pollFlows(cb, interval)
+	return nil
+}
+
+// Stop stops polling loop.
+func (t *TracerInFlowAggr) Stop() {
+	t.stopChan <- struct{}{}
+}
+
+// DumpFlows gets and deletes all flows.
+func (t *TracerInFlowAggr) DumpFlows() ([]*Flow, error) {
+	return dumpSingleFlows(t.flowsMapFD())
+}
+
+func (t *TracerInFlowAggr) flowsMapFD() C.int {
+	return C.bpf_map__fd(t.obj.maps.flows)
+}
+
+func (t *TracerInFlowAggr) udpPortBindingMapFD() C.int {
+	return C.bpf_map__fd(t.obj.maps.udp_port_binding)
+}
+
+func (t *TracerInFlowAggr) pollFlows(cb func([]*Flow) error, interval time.Duration) {
+	tick := time.NewTicker(interval)
+	defer tick.Stop()
+
+	for {
+		select {
+		case <-t.stopChan:
+			return
+		case <-tick.C:
+			flows, err := t.DumpFlows()
+			if err != nil {
+				log.Println(err)
+			}
+			if err := cb(flows); err != nil {
+				log.Println(err)
+			}
+		}
+	}
+}
+
+func dumpSingleFlows(fd C.int) ([]*Flow, error) {
+	pKey, pNextKey := C.NULL, unsafe.Pointer(&C.struct_flow_tuple{})
+	keys := make([]C.struct_flow_tuple, C.MAX_SINGLE_FLOW_ENTRIES)
+	ckeys := unsafe.Pointer(&keys[0])
+	values := make([]C.struct_single_flow, C.MAX_SINGLE_FLOW_ENTRIES)
+	cvalues := unsafe.Pointer(&values[0])
+	opts := &C.struct_bpf_map_batch_opts{
+		elem_flags: 0,
+		flags:      0,
+		sz:         C.sizeof_struct_bpf_map_batch_opts,
+	}
+
+	var (
+		batchSize, n C.uint = 10, 0
+		nRead        int    = 0
+		ret          C.int  = 0
+		err          error
+	)
+	for ret == 0 {
+		n = batchSize
+		ret, err = C.bpf_map_lookup_and_delete_batch(fd, pKey, pNextKey,
+			unsafe.Pointer(uintptr(ckeys)+uintptr(nRead*C.sizeof_struct_flow_tuple)),
+			unsafe.Pointer(uintptr(cvalues)+uintptr(nRead*C.sizeof_struct_single_flow)),
+			&n, opts)
+		if err != nil && err != syscall.Errno(syscall.ENOENT) {
+			return nil, fmt.Errorf("Error bpf_map_lookup_and_delete_batch, fd:%d, ret:%d, %s", fd, ret, err)
+		}
+		nRead += (int)(n)
+		if err == syscall.Errno(syscall.ENOENT) {
+			break
+		}
+		pKey = pNextKey
+	}
+
+	flows := make([]*Flow, 0, nRead)
+	for i := 0; i < nRead; i++ {
+		saddr := inetNtop((uint32)(values[i].saddr))
+		daddr := inetNtop((uint32)(values[i].daddr))
+		flow := &Flow{
+			SAddr:       &saddr,
+			DAddr:       &daddr,
+			ProcessName: C.GoString((*C.char)(unsafe.Pointer(&values[i].task))),
+			LPort:       (uint16)(values[i].lport), // why not ntohs?
+			Direction:   flowDirectionFrom((C.flow_direction)(values[i].direction)),
+			L4Proto:     (uint8)(ntohs((uint16)(values[i].l4_proto))),
+			LastPID:     (uint32)(values[i].pid),
+			Stat:        &FlowStat{}, // %TODO:
+		}
+		flows = append(flows, flow)
+	}
+
+	return flows, nil
 }
 
 // GetStats fetches stats of BPF program.

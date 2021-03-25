@@ -203,4 +203,38 @@ func runInFlowAggr(sig chan os.Signal) {
 	if prof {
 		serveProfiler(t.GetStats)
 	}
+
+	printFlow := func(flows []*conntracer.Flow) error {
+		var aggrFlows sync.Map
+		for _, flow := range flows {
+			tuple := connAggrTuple{SAddr: flow.SAddr.String(), DAddr: flow.DAddr.String(), LPort: flow.LPort}
+			aggrFlows.Store(tuple, flow)
+		}
+		aggrFlows.Range(func(key, value interface{}) bool {
+			flow := value.(*conntracer.Flow)
+			switch flow.Direction {
+			case conntracer.FlowActive:
+				fmt.Printf("%-25s %-25s %-20d %-10d %-20s\n", flow.SAddr, flow.DAddr, flow.LPort, flow.LastPID, flow.ProcessName)
+			case conntracer.FlowPassive:
+				fmt.Printf("%-25s %-25s %-20d %-10d %-20s\n", flow.DAddr, flow.SAddr, flow.LPort, flow.LastPID, flow.ProcessName)
+			default:
+				log.Printf("wrong direction '%d', %+v\n", flow.Direction, flow)
+			}
+			return true
+		})
+		return nil
+	}
+
+	if err := t.Start(printFlow, interval); err != nil {
+		log.Println(err)
+		return
+	}
+
+	// print header
+	fmt.Printf("%-25s %-25s %-20s %-10s %-20s %-10s\n", "LADDR", "RADDR", "LPORT", "PID", "COMM", "CONNECTIONS")
+
+	ret := <-sig
+	t.Stop()
+
+	log.Printf("Received %v, Goodbye\n", ret)
 }

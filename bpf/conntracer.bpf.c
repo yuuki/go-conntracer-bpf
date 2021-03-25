@@ -142,8 +142,8 @@ int BPF_KPROBE(ip_make_skb, struct sock *sk, struct flowi4 *flw4) {
 	read_flow_for_udp_send(&flow_key, sk, flw4);
 	insert_udp_flows(pid, &flow_key);
 
-	log_debug("kprobe/ip_make_skb: sport:%u, dport:%u, tgid:%u\n",
-		flow_key.sport,flow_key.dport, pid_tgid);
+	log_debug("kprobe/ip_make_skb: lport:%u, tgid:%u\n",
+		flow_key.lport, pid_tgid);
 	return 0;
 }
 
@@ -159,7 +159,7 @@ int BPF_KPROBE(skb_consume_udp, struct sock *sk, struct sk_buff *skb) {
 	insert_udp_flows(pid, &flow_key);
 
 	log_debug("kprobe/skb_consume_udp: sport:%u, dport:%u, tid:%u\n",
-		sport, dport, pid_tgid);
+		flow_key.lport, pid_tgid);
     return 0;
 }
 
