@@ -26,37 +26,31 @@ struct {
 } flows SEC(".maps");
 
 static __always_inline void
-insert_tcp_flows(pid_t pid, struct sock *sk, __u8 direction)
+insert_tcp_flows(struct flow_tuple* tuple, __u8 direction)
 {
 	struct single_flow flow = {}, *val;
-	struct flow_tuple tuple = {};
 
-	BPF_CORE_READ_INTO(&tuple.saddr, sk, __sk_common.skc_rcv_saddr);
-	BPF_CORE_READ_INTO(&tuple.daddr, sk, __sk_common.skc_daddr);
-	BPF_CORE_READ_INTO(&tuple.sport, sk, __sk_common.skc_num);
-	BPF_CORE_READ_INTO(&tuple.dport, sk, __sk_common.skc_dport);
-	flow.sport = tuple.sport;
-	flow.dport = tuple.dport;
+	flow.sport = tuple->sport;
+	flow.dport = tuple->dport;
 	switch (direction) {
 		case FLOW_ACTIVE:
-			flow.lport = tuple.dport;
+			flow.lport = tuple->dport;
 			break;
 		case FLOW_PASSIVE:
-			flow.lport = tuple.sport;
+			flow.lport = tuple->sport;
 			break;
 		default:
 			log_debug("unknown direction:%d pid:%u\n", direction, pid);
 			return;
 	}
-	tuple.pid = pid;
-	flow.pid = pid;
+	flow.pid = tuple->pid;
 	flow.direction = direction;
 	bpf_get_current_comm(flow.task, sizeof(flow.task));
 
-	flow.saddr = tuple.saddr;
-	flow.daddr = tuple.daddr;
-	tuple.l4_proto = IPPROTO_TCP;
-	flow.l4_proto = tuple.l4_proto;
+	flow.saddr = tuple->saddr;
+	flow.daddr = tuple->daddr;
+	tuple->l4_proto = IPPROTO_TCP;
+	flow.l4_proto = tuple->l4_proto;
 
 	val = bpf_map_lookup_elem(&flows, &tuple);
 	if (val) {
@@ -111,7 +105,9 @@ int BPF_KRETPROBE(tcp_v4_connect_ret, int ret)
 	if (ret)
 		goto end;
 
-	insert_tcp_flows(pid, *skpp, FLOW_ACTIVE);
+	struct flow_tuple tuple = {};
+	read_flow_tuple_for_tcp(&tuple, *skpp, pid);
+	insert_tcp_flows(&tuple, FLOW_ACTIVE);
 
 	log_debug("kretprobe/tcp_v4_connect: tgid:%u\n", pid_tgid);
 end:
@@ -130,7 +126,9 @@ int BPF_KRETPROBE(inet_csk_accept_ret, struct sock *sk)
 		return 0;
 	}
 
-	insert_tcp_flows(pid, sk, FLOW_PASSIVE);
+	struct flow_tuple tuple = {};
+	read_flow_tuple_for_tcp(&tuple, sk, pid);
+	insert_tcp_flows(&tuple, FLOW_PASSIVE);
 
 	log_debug("kretprobe/inet_csk_accept: lport:%u,pid_tgid:%u\n", tgid, lport);
 	return 0;

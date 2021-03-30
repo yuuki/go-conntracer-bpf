@@ -9,6 +9,16 @@
 #include "conntracer.h"
 #include "maps.h"
 
+static __always_inline
+void read_flow_tuple_for_tcp(struct flow_tuple *tuple, struct sock *sk, pid_t pid) {
+	BPF_CORE_READ_INTO(&tuple->saddr, sk, __sk_common.skc_rcv_saddr);
+	BPF_CORE_READ_INTO(&tuple->daddr, sk, __sk_common.skc_daddr);
+	BPF_CORE_READ_INTO(&tuple->sport, sk, __sk_common.skc_num);
+	BPF_CORE_READ_INTO(&tuple->dport, sk, __sk_common.skc_dport);
+	tuple->pid = pid;
+	tuple->l4_proto = IPPROTO_TCP;
+}
+
 static __always_inline void read_flow_for_udp_send(struct ipv4_flow_key *flow_key, struct sock *sk, struct flowi4 *flw4) {
 	__u16 dport, sport;
 
