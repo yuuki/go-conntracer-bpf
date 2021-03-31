@@ -51,6 +51,7 @@ struct flow_stat {
 };
 
 struct single_flow_stat {
+	__u64 ts_us;
     __u64 sent_bytes;
     __u64 recv_bytes;
 };
@@ -78,7 +79,6 @@ struct single_flow {
 	__u32 pid;
 	char task[TASK_COMM_LEN];
 	__u8 l4_proto;
-	struct single_flow_stat stat;
 };
 
 struct bind_args {

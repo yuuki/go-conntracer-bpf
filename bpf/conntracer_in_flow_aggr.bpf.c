@@ -25,6 +25,14 @@ struct {
 	__uint(map_flags, BPF_F_NO_PREALLOC);
 } flows SEC(".maps");
 
+struct {
+	__uint(type, BPF_MAP_TYPE_HASH);
+	__type(key, struct flow_tuple);
+	__type(value, struct single_flow_stat);
+	__uint(max_entries, MAX_FLOW_ENTRIES);
+	__uint(map_flags, BPF_F_NO_PREALLOC);
+} flow_stats SEC(".maps");
+
 static __always_inline void
 insert_tcp_flows(struct flow_tuple* tuple, __u8 direction)
 {
@@ -52,11 +60,31 @@ insert_tcp_flows(struct flow_tuple* tuple, __u8 direction)
 	tuple->l4_proto = IPPROTO_TCP;
 	flow.l4_proto = tuple->l4_proto;
 
-	val = bpf_map_lookup_elem(&flows, &tuple);
+	val = bpf_map_lookup_elem(&flows, tuple);
 	if (val) {
 		return;
 	}
-	bpf_map_update_elem(&flows, &tuple, &flow, BPF_ANY);
+	bpf_map_update_elem(&flows, tuple, &flow, BPF_ANY);
+}
+
+static __always_inline void
+update_message(struct flow_tuple* tuple, size_t sent_bytes, size_t recv_bytes)
+{
+	struct single_flow_stat empty = {};
+    __builtin_memset(&empty, 0, sizeof(struct single_flow_stat));
+	bpf_map_update_elem(&flow_stats, tuple, &empty, BPF_NOEXIST);
+
+	struct single_flow_stat *val;
+	val = bpf_map_lookup_elem(&flow_stats, tuple);
+	if (!val) return;
+	val->ts_us = bpf_ktime_get_ns() / 1000;
+
+	if (sent_bytes) {
+		__atomic_add_fetch(&val->sent_bytes, sent_bytes, __ATOMIC_RELAXED);
+	}
+	if (recv_bytes) {
+		__atomic_add_fetch(&val->recv_bytes, recv_bytes, __ATOMIC_RELAXED);
+	}
 }
 
 static __always_inline void
@@ -129,8 +157,38 @@ int BPF_KRETPROBE(inet_csk_accept_ret, struct sock *sk)
 	struct flow_tuple tuple = {};
 	read_flow_tuple_for_tcp(&tuple, sk, pid);
 	insert_tcp_flows(&tuple, FLOW_PASSIVE);
+	update_message(&tuple, 0, 0);
 
-	log_debug("kretprobe/inet_csk_accept: lport:%u,pid_tgid:%u\n", tgid, lport);
+	log_debug("kretprobe/inet_csk_accept: lport:%u, pid_tgid:%u\n", lport, tgid);
+	return 0;
+}
+
+SEC("kprobe/tcp_sendmsg")
+int BPF_KPROBE(tcp_sendmsg, struct sock* sk, struct msghdr *msg, size_t size) {
+    __u64 pid_tgid = bpf_get_current_pid_tgid();
+	__u32 pid = pid_tgid >> 32;
+    log_debug("kprobe/tcp_sendmsg: pid_tgid:%d, size:%d\n", pid_tgid, size);
+
+    struct flow_tuple tuple = {};
+	read_flow_tuple_for_tcp(&tuple, sk, pid);
+	update_message(&tuple, size, 0);
+
+    return 0;
+}
+
+SEC("kprobe/tcp_cleanup_rbuf")
+int BPF_KPROBE(tcp_cleanup_rbuf, struct sock* sk, int copied) {
+    if (copied < 0) {
+        return 0;
+    }
+    __u64 pid_tgid = bpf_get_current_pid_tgid();
+	__u32 pid = pid_tgid >> 32;
+    log_debug("kprobe/tcp_cleanup_rbuf: pid_tgid:%d, copied:%d\n", pid_tgid, copied);
+
+    struct flow_tuple tuple = {};
+	read_flow_tuple_for_tcp(&tuple, sk, pid);
+    update_message(&tuple, 0, copied);
+
 	return 0;
 }
 
