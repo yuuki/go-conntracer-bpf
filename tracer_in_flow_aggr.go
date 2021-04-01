@@ -182,7 +182,7 @@ func dumpSingleFlowStats(fd C.int) (map[SingleFlowTuple]*SingleFlowStat, error) 
 		n = batchSize
 		ret, err = C.bpf_map_lookup_and_delete_batch(fd, pKey, pNextKey,
 			unsafe.Pointer(uintptr(ckeys)+uintptr(nRead*C.sizeof_struct_flow_tuple)),
-			unsafe.Pointer(uintptr(cvalues)+uintptr(nRead*C.sizeof_struct_flow_stat)),
+			unsafe.Pointer(uintptr(cvalues)+uintptr(nRead*C.sizeof_struct_single_flow_stat)),
 			&n, opts)
 		if err != nil && err != syscall.Errno(syscall.ENOENT) {
 			return nil, xerrors.Errorf("Error lookup_and_delete flow stats, fd:%d: %w", fd, err)
