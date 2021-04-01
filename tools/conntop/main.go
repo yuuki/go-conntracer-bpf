@@ -214,9 +214,9 @@ func runInFlowAggr(sig chan os.Signal) {
 			flow := value.(*conntracer.SingleFlow)
 			switch flow.Direction {
 			case conntracer.FlowActive:
-				fmt.Printf("%-25s %-25s %-20d %-10d %-20s %-10d %-10d\n", flow.SAddr, flow.DAddr, flow.LPort, flow.PID, flow.ProcessName, flow.Stat.SentBytes/1024, flow.Stat.RecvBytes/1024)
+				fmt.Printf("%-25s %-25s %-20d %-10d %-20s %-10.2f %-10.2f\n", flow.SAddr, flow.DAddr, flow.LPort, flow.PID, flow.ProcessName, float64(flow.Stat.SentBytes)/1024, float64(flow.Stat.RecvBytes)/1024)
 			case conntracer.FlowPassive:
-				fmt.Printf("%-25s %-25s %-20d %-10d %-20s %-10d %-10d\n", flow.DAddr, flow.SAddr, flow.LPort, flow.PID, flow.ProcessName, flow.Stat.SentBytes/1024, flow.Stat.RecvBytes/1024)
+				fmt.Printf("%-25s %-25s %-20d %-10d %-20s %-10.2f %-10.2f\n", flow.DAddr, flow.SAddr, flow.LPort, flow.PID, flow.ProcessName, float64(flow.Stat.SentBytes)/1024, float64(flow.Stat.RecvBytes)/1024)
 			default:
 				log.Printf("wrong direction '%d', %+v\n", flow.Direction, flow)
 			}
