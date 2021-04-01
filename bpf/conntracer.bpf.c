@@ -141,6 +141,35 @@ int BPF_KRETPROBE(inet_csk_accept_ret, struct sock *sk)
 	return 0;
 }
 
+SEC("kprobe/tcp_sendmsg")
+int BPF_KPROBE(tcp_sendmsg, struct sock* sk, struct msghdr *msg, size_t size) {
+    __u64 pid_tgid = bpf_get_current_pid_tgid();
+	__u32 pid = pid_tgid >> 32;
+    log_debug("kprobe/tcp_sendmsg: pid_tgid:%d, size:%d\n", pid_tgid, size);
+
+    struct aggregated_flow_tuple tuple = {};
+	read_aggr_flow_tuple_for_tcp(&tuple, sk, pid);
+	update_message(&tuple, size, 0);
+
+    return 0;
+}
+
+SEC("kprobe/tcp_cleanup_rbuf")
+int BPF_KPROBE(tcp_cleanup_rbuf, struct sock* sk, int copied) {
+    if (copied < 0) {
+        return 0;
+    }
+    __u64 pid_tgid = bpf_get_current_pid_tgid();
+	__u32 pid = pid_tgid >> 32;
+    log_debug("kprobe/tcp_cleanup_rbuf: pid_tgid:%d, copied:%d\n", pid_tgid, copied);
+
+    struct aggregated_flow_tuple tuple = {};
+	read_aggr_flow_tuple_for_tcp(&tuple, sk, pid);
+    update_message(&tuple, 0, copied);
+
+	return 0;
+}
+
 // struct sock with udp_sendmsg may not miss ip addresses on listening socket.
 // Addresses are retrieved from struct flowi4 with ip_make_skb.
 // https://github.com/DataDog/datadog-agent/pull/6307
