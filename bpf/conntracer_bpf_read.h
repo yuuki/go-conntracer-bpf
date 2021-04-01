@@ -19,6 +19,31 @@ void read_flow_tuple_for_tcp(struct flow_tuple *tuple, struct sock *sk, pid_t pi
 	tuple->l4_proto = IPPROTO_TCP;
 }
 
+static __always_inline
+void read_aggr_flow_tuple_for_tcp(struct aggregated_flow_tuple *tuple, struct sock *sk, flow_direction direction) {
+	__u16 sport, dport;
+
+	BPF_CORE_READ_INTO(&tuple->saddr, sk, __sk_common.skc_rcv_saddr);
+	BPF_CORE_READ_INTO(&tuple->daddr, sk, __sk_common.skc_daddr);
+	BPF_CORE_READ_INTO(&sport, sk, __sk_common.skc_num);
+	BPF_CORE_READ_INTO(&dport, sk, __sk_common.skc_dport);
+
+	tuple->l4_proto = IPPROTO_TCP;
+
+	tuple->direction = direction;
+	switch (direction) {
+		case FLOW_ACTIVE:
+			tuple->lport = dport;
+			break;
+		case FLOW_PASSIVE:
+			tuple->lport = sport;
+			break;
+		default:
+			log_debug("unreachable statement\n");
+			break;
+	}
+}
+
 static __always_inline void read_flow_for_udp_send(struct aggregated_flow_tuple *tuple, struct sock *sk, struct flowi4 *flw4) {
 	__u16 dport, sport;
 
