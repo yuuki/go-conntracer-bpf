@@ -71,9 +71,43 @@ type Flow struct {
 	Stat        *FlowStat
 }
 
+/*
+flow_tuple
+__u32 saddr;
+__u32 daddr;
+__u16 sport;
+__u16 dport;
+__u32 pid;
+__u8 l4_proto;
+*/
+type SingleFlowTuple C.struct_flow_tuple
+
+// SingleFlow is a single flow.
+type SingleFlow struct {
+	SAddr       *net.IP
+	DAddr       *net.IP
+	SPort       uint16
+	DPort       uint16
+	LPort       uint16
+	Direction   FlowDirection
+	PID         uint32
+	ProcessName string
+	L4Proto     uint8
+	Stat        *SingleFlowStat
+}
+
+// SingleFlowStat is an statistics for single flow.
+type SingleFlowStat struct {
+	Timestamp time.Time
+	SentBytes uint64
+	RecvBytes uint64
+}
+
 // FlowStat is an statistics for Flow.
 type FlowStat struct {
 	NewConnections uint32
+	SentBytes      uint64
+	RecvBytes      uint64
 }
 
 // Tracer is an object for state retention.

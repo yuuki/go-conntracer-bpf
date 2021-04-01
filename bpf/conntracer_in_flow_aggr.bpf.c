@@ -136,6 +136,7 @@ int BPF_KRETPROBE(tcp_v4_connect_ret, int ret)
 	struct flow_tuple tuple = {};
 	read_flow_tuple_for_tcp(&tuple, *skpp, pid);
 	insert_tcp_flows(&tuple, FLOW_ACTIVE);
+	update_message(&tuple, 0, 0);
 
 	log_debug("kretprobe/tcp_v4_connect: tgid:%u\n", pid_tgid);
 end:

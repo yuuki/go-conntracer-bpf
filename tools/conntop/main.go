@@ -204,19 +204,19 @@ func runInFlowAggr(sig chan os.Signal) {
 		serveProfiler(t.GetStats)
 	}
 
-	printFlow := func(flows []*conntracer.Flow) error {
+	printFlow := func(flows []*conntracer.SingleFlow) error {
 		var aggrFlows sync.Map
 		for _, flow := range flows {
 			tuple := connAggrTuple{SAddr: flow.SAddr.String(), DAddr: flow.DAddr.String(), LPort: flow.LPort}
 			aggrFlows.Store(tuple, flow)
 		}
 		aggrFlows.Range(func(key, value interface{}) bool {
-			flow := value.(*conntracer.Flow)
+			flow := value.(*conntracer.SingleFlow)
 			switch flow.Direction {
 			case conntracer.FlowActive:
-				fmt.Printf("%-25s %-25s %-20d %-10d %-20s\n", flow.SAddr, flow.DAddr, flow.LPort, flow.LastPID, flow.ProcessName)
+				fmt.Printf("%-25s %-25s %-20d %-10d %-20s %-10d %-10d\n", flow.SAddr, flow.DAddr, flow.LPort, flow.PID, flow.ProcessName, flow.Stat.SentBytes/1024, flow.Stat.RecvBytes/1024)
 			case conntracer.FlowPassive:
-				fmt.Printf("%-25s %-25s %-20d %-10d %-20s\n", flow.DAddr, flow.SAddr, flow.LPort, flow.LastPID, flow.ProcessName)
+				fmt.Printf("%-25s %-25s %-20d %-10d %-20s %-10d %-10d\n", flow.DAddr, flow.SAddr, flow.LPort, flow.PID, flow.ProcessName, flow.Stat.SentBytes/1024, flow.Stat.RecvBytes/1024)
 			default:
 				log.Printf("wrong direction '%d', %+v\n", flow.Direction, flow)
 			}
@@ -231,7 +231,7 @@ func runInFlowAggr(sig chan os.Signal) {
 	}
 
 	// print header
-	fmt.Printf("%-25s %-25s %-20s %-10s %-20s %-10s\n", "LADDR", "RADDR", "LPORT", "PID", "COMM", "CONNECTIONS")
+	fmt.Printf("%-25s %-25s %-20s %-10s %-20s %-10s %-10s\n", "LADDR", "RADDR", "LPORT", "PID", "COMM", "SENT(kB/s)", "RECV(kB/s)")
 
 	ret := <-sig
 	t.Stop()

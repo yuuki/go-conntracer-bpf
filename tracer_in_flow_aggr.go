@@ -7,6 +7,9 @@ import (
 	"syscall"
 	"time"
 	"unsafe"
+
+	"golang.org/x/sync/errgroup"
+	"golang.org/x/xerrors"
 )
 
 /*
@@ -74,7 +77,7 @@ func (t *TracerInFlowAggr) Close() {
 }
 
 // Start starts polling loop.
-func (t *TracerInFlowAggr) Start(cb func([]*Flow) error, interval time.Duration) error {
+func (t *TracerInFlowAggr) Start(cb func([]*SingleFlow) error, interval time.Duration) error {
 	if err := initializeUDPPortBindingMap(t.udpPortBindingMapFD()); err != nil {
 		return err
 	}
@@ -88,19 +91,56 @@ func (t *TracerInFlowAggr) Stop() {
 }
 
 // DumpFlows gets and deletes all flows.
-func (t *TracerInFlowAggr) DumpFlows() ([]*Flow, error) {
-	return dumpSingleFlows(t.flowsMapFD())
+func (t *TracerInFlowAggr) DumpFlows() ([]*SingleFlow, error) {
+	eg := errgroup.Group{}
+	flowChan := make(chan map[SingleFlowTuple]*SingleFlow, 1)
+	statChan := make(chan map[SingleFlowTuple]*SingleFlowStat, 1)
+	eg.Go(func() error {
+		flow, err := dumpSingleFlows(t.flowsMapFD())
+		if err != nil {
+			return err
+		}
+		flowChan <- flow
+		close(flowChan)
+		return nil
+	})
+	eg.Go(func() error {
+		stats, err := dumpSingleFlowStats(t.flowStatsMapFD())
+		if err != nil {
+			return err
+		}
+		statChan <- stats
+		close(statChan)
+		return nil
+	})
+	if err := eg.Wait(); err != nil {
+		return nil, err
+	}
+
+	// merge two maps
+	flows := <-flowChan
+	stats := <-statChan
+	merged := make([]*SingleFlow, 0, len(flows))
+	for t, flow := range flows {
+		flow.Stat = stats[t]
+		merged = append(merged, flow)
+	}
+	return merged, nil
 }
 
 func (t *TracerInFlowAggr) flowsMapFD() C.int {
 	return C.bpf_map__fd(t.obj.maps.flows)
 }
 
+func (t *TracerInFlowAggr) flowStatsMapFD() C.int {
+	return C.bpf_map__fd(t.obj.maps.flow_stats)
+}
+
 func (t *TracerInFlowAggr) udpPortBindingMapFD() C.int {
 	return C.bpf_map__fd(t.obj.maps.udp_port_binding)
 }
 
-func (t *TracerInFlowAggr) pollFlows(cb func([]*Flow) error, interval time.Duration) {
+func (t *TracerInFlowAggr) pollFlows(cb func([]*SingleFlow) error, interval time.Duration) {
 	tick := time.NewTicker(interval)
 	defer tick.Stop()
 
@@ -120,7 +160,55 @@ func (t *TracerInFlowAggr) pollFlows(cb func([]*Flow) error, interval time.Durat
 	}
 }
 
-func dumpSingleFlows(fd C.int) ([]*Flow, error) {
+func dumpSingleFlowStats(fd C.int) (map[SingleFlowTuple]*SingleFlowStat, error) {
+	pKey, pNextKey := C.NULL, unsafe.Pointer(&C.struct_flow_tuple{})
+	keys := make([]C.struct_flow_tuple, C.MAX_SINGLE_FLOW_ENTRIES)
+	ckeys := unsafe.Pointer(&keys[0])
+	values := make([]C.struct_single_flow_stat, C.MAX_SINGLE_FLOW_ENTRIES)
+	cvalues := unsafe.Pointer(&values[0])
+	opts := &C.struct_bpf_map_batch_opts{
+		elem_flags: 0,
+		flags:      0,
+		sz:         C.sizeof_struct_bpf_map_batch_opts,
+	}
+
+	var (
+		batchSize, n C.uint = 10, 0
+		nRead        int    = 0
+		ret          C.int  = 0
+		err          error
+	)
+	for ret == 0 {
+		n = batchSize
+		ret, err = C.bpf_map_lookup_and_delete_batch(fd, pKey, pNextKey,
+			unsafe.Pointer(uintptr(ckeys)+uintptr(nRead*C.sizeof_struct_flow_tuple)),
+			unsafe.Pointer(uintptr(cvalues)+uintptr(nRead*C.sizeof_struct_flow_stat)),
+			&n, opts)
+		if err != nil && err != syscall.Errno(syscall.ENOENT) {
+			return nil, xerrors.Errorf("Error lookup_and_delete flow stats, fd:%d: %w", fd, err)
+		}
+		nRead += (int)(n)
+		if err == syscall.Errno(syscall.ENOENT) {
+			break
+		}
+		pKey = pNextKey
+	}
+
+	stats := make(map[SingleFlowTuple]*SingleFlowStat, nRead)
+	for i := 0; i < nRead; i++ {
+		tuple := (SingleFlowTuple)(keys[i])
+		stat := values[i]
+		stats[tuple] = &SingleFlowStat{
+			Timestamp: time.Unix((int64)(stat.ts_us)*1000*1000, 0),
+			SentBytes: (uint64)(stat.sent_bytes),
+			RecvBytes: (uint64)(stat.recv_bytes),
+		}
+	}
+
+	return stats, nil
+}
+
+func dumpSingleFlows(fd C.int) (map[SingleFlowTuple]*SingleFlow, error) {
 	pKey, pNextKey := C.NULL, unsafe.Pointer(&C.struct_flow_tuple{})
 	keys := make([]C.struct_flow_tuple, C.MAX_SINGLE_FLOW_ENTRIES)
 	ckeys := unsafe.Pointer(&keys[0])
@@ -154,21 +242,23 @@ func dumpSingleFlows(fd C.int) ([]*Flow, error) {
 		pKey = pNextKey
 	}
 
-	flows := make([]*Flow, 0, nRead)
+	flows := make(map[SingleFlowTuple]*SingleFlow, nRead)
 	for i := 0; i < nRead; i++ {
+		tuple := (SingleFlowTuple)(keys[i])
 		saddr := inetNtop((uint32)(values[i].saddr))
 		daddr := inetNtop((uint32)(values[i].daddr))
-		flow := &Flow{
+		flows[tuple] = &SingleFlow{
 			SAddr:       &saddr,
 			DAddr:       &daddr,
 			ProcessName: C.GoString((*C.char)(unsafe.Pointer(&values[i].task))),
+			SPort:       (uint16)(values[i].sport), // why not ntohs?
+			DPort:       (uint16)(values[i].dport), // why not ntohs?
 			LPort:       (uint16)(values[i].lport), // why not ntohs?
 			Direction:   flowDirectionFrom((C.flow_direction)(values[i].direction)),
 			L4Proto:     (uint8)(ntohs((uint16)(values[i].l4_proto))),
-			LastPID:     (uint32)(values[i].pid),
-			Stat:        &FlowStat{}, // %TODO:
+			PID:         (uint32)(values[i].pid),
+			Stat:        nil,
 		}
-		flows = append(flows, flow)
 	}
 
 	return flows, nil
