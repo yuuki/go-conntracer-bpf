@@ -4,6 +4,7 @@
 /* The maximum number of items in maps */
 #define MAX_ENTRIES 8192
 #define MAX_FLOW_ENTRIES 4096
+#define MAX_SINGLE_FLOW_ENTRIES 65535
 #define MAX_PORT_BINDING_ENTRIES 65535
 
 #define TASK_COMM_LEN 16
@@ -36,20 +37,26 @@ struct ipv4_flow_key {
 	__u8 l4_proto;           	// sk_protocol such as IPPRPTO_TCP, IPPROTO_UDP
 };
 
-struct ipv6_flow_key {
-	__u8 saddr[16];
-	__u8 daddr[16];
-	__u16 dport;
+struct flow_tuple {
+    __u32 saddr;  				// source address
+    __u32 daddr;  				// destination address
+	__u16 sport;  				// source port
+	__u16 dport;  				// destination port
+	__u32 pid;
+	__u8 l4_proto;
 };
 
 struct flow_stat {
 	__u32 connections;  	// the number of connections
-	// __u16 latency_max;
-	// __u16 latency_min;
-	// __u16 latency_avg;
 };
 
-struct flow {
+struct single_flow_stat {
+	__u64 ts_us;
+    __u64 sent_bytes;
+    __u64 recv_bytes;
+};
+
+struct aggregated_flow {
 	__u64 ts_us;
     __u32 saddr;  				// source address
     __u32 daddr;  				// destination address
@@ -59,6 +66,19 @@ struct flow {
 	__u32 pid;
 	__u8 l4_proto;
 	struct flow_stat stat;
+};
+
+struct single_flow {
+	__u64 ts_us;
+    __u32 saddr;  				// source address
+    __u32 daddr;  				// destination address
+	__u16 sport;  				// source port
+	__u16 dport;  				// destination port
+	__u16 lport;                // listening port
+	flow_direction direction;
+	__u32 pid;
+	char task[TASK_COMM_LEN];
+	__u8 l4_proto;
 };
 
 struct bind_args {

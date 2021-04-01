@@ -71,9 +71,53 @@ type Flow struct {
 	Stat        *FlowStat
 }
 
+/*
+flow_tuple
+__u32 saddr;
+__u32 daddr;
+__u16 sport;
+__u16 dport;
+__u32 pid;
+__u8 l4_proto;
+*/
+type SingleFlowTuple C.struct_flow_tuple
+
+// SingleFlow is a single flow.
+type SingleFlow struct {
+	SAddr       *net.IP
+	DAddr       *net.IP
+	SPort       uint16
+	DPort       uint16
+	LPort       uint16
+	Direction   FlowDirection
+	PID         uint32
+	ProcessName string
+	L4Proto     uint8
+	Stat        *SingleFlowStat
+}
+
+// SingleFlowStat is an statistics for single flow.
+type SingleFlowStat struct {
+	Timestamp time.Time
+	sentBytes uint64
+	recvBytes uint64
+}
+
+// SentBytes returns sent kB/sec.
+func (s *SingleFlowStat) SentBytes(d time.Duration) float64 {
+	return float64(s.sentBytes) / 1024 / d.Seconds()
+}
+
+// RecvBytes returns recv kB/sec.
+func (s *SingleFlowStat) RecvBytes(d time.Duration) float64 {
+	return float64(s.recvBytes) / 1024 / d.Seconds()
+}
+
 // FlowStat is an statistics for Flow.
 type FlowStat struct {
 	NewConnections uint32
+	SentBytes      uint64
+	RecvBytes      uint64
 }
 
 // Tracer is an object for state retention.
@@ -185,7 +229,7 @@ func dumpFlows(fd C.int) ([]*Flow, error) {
 	pKey, pNextKey := C.NULL, unsafe.Pointer(&C.struct_ipv4_flow_key{})
 	keys := make([]C.struct_ipv4_flow_key, C.MAX_ENTRIES)
 	ckeys := unsafe.Pointer(&keys[0])
-	values := make([]C.struct_flow, C.MAX_ENTRIES)
+	values := make([]C.struct_aggregated_flow, C.MAX_ENTRIES)
 	cvalues := unsafe.Pointer(&values[0])
 	opts := &C.struct_bpf_map_batch_opts{
 		elem_flags: 0,
@@ -203,7 +247,7 @@ func dumpFlows(fd C.int) ([]*Flow, error) {
 		n = batchSize
 		ret, err = C.bpf_map_lookup_and_delete_batch(fd, pKey, pNextKey,
 			unsafe.Pointer(uintptr(ckeys)+uintptr(nRead*C.sizeof_struct_ipv4_flow_key)),
-			unsafe.Pointer(uintptr(cvalues)+uintptr(nRead*C.sizeof_struct_flow)),
+			unsafe.Pointer(uintptr(cvalues)+uintptr(nRead*C.sizeof_struct_aggregated_flow)),
 			&n, opts)
 		if err != nil && err != syscall.Errno(syscall.ENOENT) {
 			return nil, fmt.Errorf("Error bpf_map_lookup_and_delete_batch, fd:%d, ret:%d, %s", fd, ret, err)

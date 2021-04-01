@@ -25,7 +25,7 @@ struct {
 static __always_inline void
 insert_tcp_flows(pid_t pid, struct sock *sk, __u16 lport, __u8 direction)
 {
-	struct flow *flow;
+	struct single_flow *flow;
 
 	flow = bpf_ringbuf_reserve(&flows, sizeof(*flow), 0);
 	if (!flow) {
@@ -47,7 +47,7 @@ insert_tcp_flows(pid_t pid, struct sock *sk, __u16 lport, __u8 direction)
 static __always_inline void
 insert_udp_flows(pid_t pid, struct ipv4_flow_key* flow_key)
 {
-	struct flow *flow;
+	struct single_flow *flow;
 
 	flow = bpf_ringbuf_reserve(&flows, sizeof(*flow), 0);
 	if (!flow) {
@@ -137,8 +137,8 @@ int BPF_KPROBE(ip_make_skb, struct sock *sk, struct flowi4 *flw4) {
 	read_flow_for_udp_send(&flow_key, sk, flw4);
 	insert_udp_flows(pid, &flow_key);
 
-	log_debug("kprobe/ip_make_skb: sport:%u, dport:%u, tgid:%u\n",
-		flow_key.sport,flow_key.dport, pid_tgid);
+	log_debug("kprobe/ip_make_skb: lport:%u, tgid:%u\n",
+		flow_key.lport, pid_tgid);
 	return 0;
 }
 
@@ -153,8 +153,8 @@ int BPF_KPROBE(skb_consume_udp, struct sock *sk, struct sk_buff *skb) {
 	read_flow_for_udp_recv(&flow_key, sk, skb);
 	insert_udp_flows(pid, &flow_key);
 
-	log_debug("kprobe/skb_consume_udp: sport:%u, dport:%u, tid:%u\n",
-		flow_key->sport, flow_key->dport, pid_tgid);
+	log_debug("kprobe/skb_consume_udp: lport:%u, tid:%u\n",
+		flow_key.lport, pid_tgid);
     return 0;
 }
 

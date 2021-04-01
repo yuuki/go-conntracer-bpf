@@ -21,7 +21,7 @@ char LICENSE[] SEC("license") = "Dual BSD/GPL";
 struct {
 	__uint(type, BPF_MAP_TYPE_HASH);
 	__type(key, struct ipv4_flow_key);
-	__type(value, struct flow);
+	__type(value, struct aggregated_flow);
 	__uint(max_entries, MAX_FLOW_ENTRIES);
 	__uint(map_flags, BPF_F_NO_PREALLOC);
 } flows SEC(".maps");
@@ -29,7 +29,7 @@ struct {
 static __always_inline void
 insert_tcp_flows(pid_t pid, struct sock *sk, __u16 lport, __u8 direction)
 {
-	struct flow flow = {}, *val;
+	struct aggregated_flow flow = {}, *val;
 	struct ipv4_flow_key flow_key = {};
 
 	BPF_CORE_READ_INTO(&flow.saddr, sk, __sk_common.skc_rcv_saddr);
@@ -59,7 +59,7 @@ insert_tcp_flows(pid_t pid, struct sock *sk, __u16 lport, __u8 direction)
 static __always_inline void
 insert_udp_flows(pid_t pid, struct ipv4_flow_key* flow_key)
 {
-	struct flow flow = {};
+	struct aggregated_flow flow = {};
 
 	flow.saddr = flow_key->saddr;
 	flow.daddr = flow_key->daddr;
@@ -142,8 +142,8 @@ int BPF_KPROBE(ip_make_skb, struct sock *sk, struct flowi4 *flw4) {
 	read_flow_for_udp_send(&flow_key, sk, flw4);
 	insert_udp_flows(pid, &flow_key);
 
-	log_debug("kprobe/ip_make_skb: sport:%u, dport:%u, tgid:%u\n",
-		flow_key.sport,flow_key.dport, pid_tgid);
+	log_debug("kprobe/ip_make_skb: lport:%u, tgid:%u\n",
+		flow_key.lport, pid_tgid);
 	return 0;
 }
 
@@ -159,7 +159,7 @@ int BPF_KPROBE(skb_consume_udp, struct sock *sk, struct sk_buff *skb) {
 	insert_udp_flows(pid, &flow_key);
 
 	log_debug("kprobe/skb_consume_udp: sport:%u, dport:%u, tid:%u\n",
-		sport, dport, pid_tgid);
+		flow_key.lport, pid_tgid);
     return 0;
 }
 
