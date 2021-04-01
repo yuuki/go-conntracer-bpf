@@ -198,15 +198,20 @@ int BPF_KPROBE(tcp_cleanup_rbuf, struct sock* sk, int copied) {
 // https://github.com/DataDog/datadog-agent/pull/6307
 SEC("kprobe/ip_make_skb")
 int BPF_KPROBE(ip_make_skb, struct sock *sk, struct flowi4 *flw4) {
+    size_t msglen = (size_t)PT_REGS_PARM5(ctx);
+
 	__u64 pid_tgid = bpf_get_current_pid_tgid();
 	__u32 pid = pid_tgid >> 32;
 	struct flow_tuple tuple = {};
 	__u8 direction;
 	__u16 lport;
 
+    msglen = msglen - sizeof(struct udphdr);
+
 	read_flow_tuple_for_udp_send(&tuple, &direction, &lport, sk, flw4);
 	tuple.pid = pid;
 	insert_udp_flows(&tuple, direction, lport);
+    update_message(&tuple, msglen, 0);
 
 	log_debug("kprobe/ip_make_skb: sport:%u, dport:%u, tgid:%u\n",
 		tuple.sport, tuple.dport, pid_tgid);
@@ -216,16 +221,21 @@ int BPF_KPROBE(ip_make_skb, struct sock *sk, struct flowi4 *flw4) {
 // struct sock with udp_recvmsg may not miss ip addresses on listening socket.
 // Addresses are retrieved from arguments of skb_consume_udp.
 SEC("kprobe/skb_consume_udp")
-int BPF_KPROBE(skb_consume_udp, struct sock *sk, struct sk_buff *skb) {
+int BPF_KPROBE(skb_consume_udp, struct sock *sk, struct sk_buff *skb, int len) {
 	__u64 tgid = bpf_get_current_pid_tgid();
 	__u32 pid = tgid >> 32;
 	struct flow_tuple tuple = {};
 	__u8 direction;
 	__u16 lport;
 
+	if (len < 0) {
+		return 0;
+	}
+
 	read_flow_tuple_for_udp_recv(&tuple, &direction, &lport, sk, skb);
 	tuple.pid = pid;
 	insert_udp_flows(&tuple, direction, lport);
+    update_message(&tuple, 0, len);
 
 	log_debug("kprobe/skb_consume_udp: sport:%u, dport:%u, tid:%u\n",
 		tuple.sport, tuple.dport, tgid);
