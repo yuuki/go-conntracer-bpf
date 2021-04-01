@@ -99,8 +99,18 @@ type SingleFlow struct {
 // SingleFlowStat is an statistics for single flow.
 type SingleFlowStat struct {
 	Timestamp time.Time
-	SentBytes uint64
-	RecvBytes uint64
+	sentBytes uint64
+	recvBytes uint64
+}
+
+// SentBytes returns sent kB/sec.
+func (s *SingleFlowStat) SentBytes(d time.Duration) float64 {
+	return float64(s.sentBytes) / 1024 / d.Seconds()
+}
+
+// RecvBytes returns recv kB/sec.
+func (s *SingleFlowStat) RecvBytes(d time.Duration) float64 {
+	return float64(s.recvBytes) / 1024 / d.Seconds()
 }
 
 // FlowStat is an statistics for Flow.

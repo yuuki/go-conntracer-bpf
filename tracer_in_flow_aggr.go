@@ -200,8 +200,8 @@ func dumpSingleFlowStats(fd C.int) (map[SingleFlowTuple]*SingleFlowStat, error) 
 		stat := values[i]
 		stats[tuple] = &SingleFlowStat{
 			Timestamp: time.Unix((int64)(stat.ts_us)*1000*1000, 0),
-			SentBytes: (uint64)(stat.sent_bytes),
-			RecvBytes: (uint64)(stat.recv_bytes),
+			sentBytes: (uint64)(stat.sent_bytes),
+			recvBytes: (uint64)(stat.recv_bytes),
 		}
 	}
 
