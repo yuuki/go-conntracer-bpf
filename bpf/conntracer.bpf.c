@@ -20,7 +20,7 @@ char LICENSE[] SEC("license") = "Dual BSD/GPL";
 
 struct {
 	__uint(type, BPF_MAP_TYPE_HASH);
-	__type(key, struct ipv4_flow_key);
+	__type(key, struct aggregated_flow_tuple);
 	__type(value, struct aggregated_flow);
 	__uint(max_entries, MAX_FLOW_ENTRIES);
 	__uint(map_flags, BPF_F_NO_PREALLOC);
@@ -30,7 +30,7 @@ static __always_inline void
 insert_tcp_flows(pid_t pid, struct sock *sk, __u16 lport, __u8 direction)
 {
 	struct aggregated_flow flow = {}, *val;
-	struct ipv4_flow_key flow_key = {};
+	struct aggregated_flow_tuple tuple = {};
 
 	BPF_CORE_READ_INTO(&flow.saddr, sk, __sk_common.skc_rcv_saddr);
 	BPF_CORE_READ_INTO(&flow.daddr, sk, __sk_common.skc_daddr);
@@ -39,13 +39,13 @@ insert_tcp_flows(pid_t pid, struct sock *sk, __u16 lport, __u8 direction)
 	flow.direction = direction;
 	bpf_get_current_comm(flow.task, sizeof(flow.task));
 
-	flow_key.saddr = flow.saddr;
-	flow_key.daddr = flow.daddr;
-	flow_key.lport = flow.lport;
-	flow_key.direction = flow.direction;
-	flow_key.l4_proto = IPPROTO_TCP;
+	tuple.saddr = flow.saddr;
+	tuple.daddr = flow.daddr;
+	tuple.lport = flow.lport;
+	tuple.direction = flow.direction;
+	tuple.l4_proto = IPPROTO_TCP;
 
-	val = bpf_map_lookup_elem(&flows, &flow_key);
+	val = bpf_map_lookup_elem(&flows, &tuple);
 	if (val) {
 		__u32 *cnt = &(val->stat.connections);
 		__atomic_add_fetch(cnt, 1, __ATOMIC_RELAXED);
@@ -53,23 +53,23 @@ insert_tcp_flows(pid_t pid, struct sock *sk, __u16 lport, __u8 direction)
 	}
 
 	flow.stat.connections = 1;
-	bpf_map_update_elem(&flows, &flow_key, &flow, BPF_ANY);
+	bpf_map_update_elem(&flows, &tuple, &flow, BPF_ANY);
 }
 
 static __always_inline void
-insert_udp_flows(pid_t pid, struct ipv4_flow_key* flow_key)
+insert_udp_flows(pid_t pid, struct aggregated_flow_tuple* tuple)
 {
 	struct aggregated_flow flow = {};
 
-	flow.saddr = flow_key->saddr;
-	flow.daddr = flow_key->daddr;
-	flow.lport = flow_key->lport;
-	flow.direction = flow_key->direction;
-	flow.l4_proto = flow_key->l4_proto;
+	flow.saddr = tuple->saddr;
+	flow.daddr = tuple->daddr;
+	flow.lport = tuple->lport;
+	flow.direction = tuple->direction;
+	flow.l4_proto = tuple->l4_proto;
 	flow.pid = pid;
 	bpf_get_current_comm(flow.task, sizeof(flow.task));
 
-	bpf_map_update_elem(&flows, flow_key, &flow, BPF_ANY);
+	bpf_map_update_elem(&flows, tuple, &flow, BPF_ANY);
 }
 
 SEC("kprobe/tcp_v4_connect")
@@ -137,13 +137,13 @@ SEC("kprobe/ip_make_skb")
 int BPF_KPROBE(ip_make_skb, struct sock *sk, struct flowi4 *flw4) {
 	__u64 pid_tgid = bpf_get_current_pid_tgid();
 	__u32 pid = pid_tgid >> 32;
-	struct ipv4_flow_key flow_key = {};
+	struct aggregated_flow_tuple tuple = {};
 
-	read_flow_for_udp_send(&flow_key, sk, flw4);
-	insert_udp_flows(pid, &flow_key);
+	read_flow_for_udp_send(&tuple, sk, flw4);
+	insert_udp_flows(pid, &tuple);
 
 	log_debug("kprobe/ip_make_skb: lport:%u, tgid:%u\n",
-		flow_key.lport, pid_tgid);
+		tuple.lport, pid_tgid);
 	return 0;
 }
 
@@ -153,13 +153,13 @@ SEC("kprobe/skb_consume_udp")
 int BPF_KPROBE(skb_consume_udp, struct sock *sk, struct sk_buff *skb) {
 	__u64 pid_tgid = bpf_get_current_pid_tgid();
 	__u32 pid = pid_tgid >> 32;
-	struct ipv4_flow_key flow_key = {};
+	struct aggregated_flow_tuple tuple = {};
 
-	read_flow_for_udp_recv(&flow_key, sk, skb);
-	insert_udp_flows(pid, &flow_key);
+	read_flow_for_udp_recv(&tuple, sk, skb);
+	insert_udp_flows(pid, &tuple);
 
 	log_debug("kprobe/skb_consume_udp: sport:%u, dport:%u, tid:%u\n",
-		flow_key.lport, pid_tgid);
+		tuple.lport, pid_tgid);
     return 0;
 }
 

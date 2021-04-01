@@ -226,8 +226,8 @@ func (t *Tracer) pollFlows(cb func([]*Flow) error, interval time.Duration) {
 }
 
 func dumpFlows(fd C.int) ([]*Flow, error) {
-	pKey, pNextKey := C.NULL, unsafe.Pointer(&C.struct_ipv4_flow_key{})
-	keys := make([]C.struct_ipv4_flow_key, C.MAX_ENTRIES)
+	pKey, pNextKey := C.NULL, unsafe.Pointer(&C.struct_struct_aggregated_flow_tuple{})
+	keys := make([]C.struct_struct_aggregated_flow_tuple, C.MAX_ENTRIES)
 	ckeys := unsafe.Pointer(&keys[0])
 	values := make([]C.struct_aggregated_flow, C.MAX_ENTRIES)
 	cvalues := unsafe.Pointer(&values[0])
@@ -246,7 +246,7 @@ func dumpFlows(fd C.int) ([]*Flow, error) {
 	for ret == 0 {
 		n = batchSize
 		ret, err = C.bpf_map_lookup_and_delete_batch(fd, pKey, pNextKey,
-			unsafe.Pointer(uintptr(ckeys)+uintptr(nRead*C.sizeof_struct_ipv4_flow_key)),
+			unsafe.Pointer(uintptr(ckeys)+uintptr(nRead*C.sizeof_struct_struct_aggregated_flow_tuple)),
 			unsafe.Pointer(uintptr(cvalues)+uintptr(nRead*C.sizeof_struct_aggregated_flow)),
 			&n, opts)
 		if err != nil && err != syscall.Errno(syscall.ENOENT) {

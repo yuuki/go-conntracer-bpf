@@ -45,7 +45,7 @@ insert_tcp_flows(pid_t pid, struct sock *sk, __u16 lport, __u8 direction)
 }
 
 static __always_inline void
-insert_udp_flows(pid_t pid, struct ipv4_flow_key* flow_key)
+insert_udp_flows(pid_t pid, struct aggregated_flow_tuple* flow_key)
 {
 	struct single_flow *flow;
 
@@ -132,7 +132,7 @@ SEC("kprobe/ip_make_skb")
 int BPF_KPROBE(ip_make_skb, struct sock *sk, struct flowi4 *flw4) {
 	__u64 pid_tgid = bpf_get_current_pid_tgid();
 	__u32 pid = pid_tgid >> 32;
-	struct ipv4_flow_key flow_key = {};
+	struct aggregated_flow_tuple flow_key = {};
 
 	read_flow_for_udp_send(&flow_key, sk, flw4);
 	insert_udp_flows(pid, &flow_key);
@@ -148,7 +148,7 @@ SEC("kprobe/skb_consume_udp")
 int BPF_KPROBE(skb_consume_udp, struct sock *sk, struct sk_buff *skb) {
 	__u64 pid_tgid = bpf_get_current_pid_tgid();
 	__u32 pid = pid_tgid >> 32;
-	struct ipv4_flow_key flow_key = {};
+	struct aggregated_flow_tuple flow_key = {};
 
 	read_flow_for_udp_recv(&flow_key, sk, skb);
 	insert_udp_flows(pid, &flow_key);

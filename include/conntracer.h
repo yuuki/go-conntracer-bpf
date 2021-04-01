@@ -29,12 +29,12 @@ typedef enum
 	FLOW_PASSIVE // 'passive open'
 } flow_direction;
 
-struct ipv4_flow_key {
+struct aggregated_flow_tuple {
 	__u32 saddr;
 	__u32 daddr;
 	__u16 lport;				// listening port
 	flow_direction direction; 	// 0x10: "connect"(active), 0x20: "accept"(passive)
-	__u8 l4_proto;           	// sk_protocol such as IPPRPTO_TCP, IPPROTO_UDP
+	__u8 l4_proto; 				// sk_protocol such as IPPRPTO_TCP, IPPROTO_UDP
 };
 
 struct flow_tuple {
@@ -46,7 +46,10 @@ struct flow_tuple {
 	__u8 l4_proto;
 };
 
-struct flow_stat {
+struct aggregated_flow_stat {
+	__u64 ts_us;
+    __u64 sent_bytes;
+    __u64 recv_bytes;
 	__u32 connections;  	// the number of connections
 };
 
@@ -65,7 +68,6 @@ struct aggregated_flow {
 	flow_direction direction; 	// 1: "connect"(active), 2: "accept"(passive)
 	__u32 pid;
 	__u8 l4_proto;
-	struct flow_stat stat;
 };
 
 struct single_flow {
