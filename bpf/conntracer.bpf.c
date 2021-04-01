@@ -26,6 +26,14 @@ struct {
 	__uint(map_flags, BPF_F_NO_PREALLOC);
 } flows SEC(".maps");
 
+struct {
+	__uint(type, BPF_MAP_TYPE_HASH);
+	__type(key, struct aggregated_flow_tuple);
+	__type(value, struct aggregated_flow_stat);
+	__uint(max_entries, MAX_FLOW_ENTRIES);
+	__uint(map_flags, BPF_F_NO_PREALLOC);
+} flow_stats SEC(".maps");
+
 static __always_inline void
 insert_tcp_flows(struct aggregated_flow_tuple *tuple, pid_t pid) {
 	struct aggregated_flow flow = {}, *val;
@@ -52,6 +60,26 @@ insert_udp_flows(pid_t pid, struct aggregated_flow_tuple* tuple)
 	bpf_get_current_comm(flow.task, sizeof(flow.task));
 
 	bpf_map_update_elem(&flows, tuple, &flow, BPF_ANY);
+}
+
+static __always_inline void
+update_message(struct aggregated_flow_tuple* tuple, size_t sent_bytes, size_t recv_bytes)
+{
+	struct aggregated_flow_stat *val, empty = {};
+
+    __builtin_memset(&empty, 0, sizeof(struct aggregated_flow_stat));
+	bpf_map_update_elem(&flow_stats, tuple, &empty, BPF_NOEXIST);
+
+	val = bpf_map_lookup_elem(&flow_stats, tuple);
+	if (!val) return;
+	val->ts_us = bpf_ktime_get_ns() / 1000;
+
+	if (sent_bytes) {
+		__atomic_add_fetch(&val->sent_bytes, sent_bytes, __ATOMIC_RELAXED);
+	}
+	if (recv_bytes) {
+		__atomic_add_fetch(&val->recv_bytes, recv_bytes, __ATOMIC_RELAXED);
+	}
 }
 
 SEC("kprobe/tcp_v4_connect")
@@ -87,6 +115,7 @@ int BPF_KRETPROBE(tcp_v4_connect_ret, int ret)
 	struct aggregated_flow_tuple tuple = {};
 	read_aggr_flow_tuple_for_tcp(&tuple, sk, FLOW_ACTIVE);
 	insert_tcp_flows(&tuple, pid);
+	update_message(&tuple, 0, 0);
 
 	log_debug("kretprobe/tcp_v4_connect: dport:%u, tid:%u\n", dport, pid_tgid);
 end:
@@ -106,6 +135,7 @@ int BPF_KRETPROBE(inet_csk_accept_ret, struct sock *sk)
 	struct aggregated_flow_tuple tuple = {};
 	read_aggr_flow_tuple_for_tcp(&tuple, sk, FLOW_PASSIVE);
 	insert_tcp_flows(&tuple, pid);
+	update_message(&tuple, 0, 0);
 
 	log_debug("kretprobe/inet_csk_accept: lport:%u,pid_tgid:%u\n", pid_tgid, lport);
 	return 0;
