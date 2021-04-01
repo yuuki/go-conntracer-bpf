@@ -251,9 +251,9 @@ func dumpSingleFlows(fd C.int) (map[SingleFlowTuple]*SingleFlow, error) {
 			SAddr:       &saddr,
 			DAddr:       &daddr,
 			ProcessName: C.GoString((*C.char)(unsafe.Pointer(&values[i].task))),
-			SPort:       (uint16)(values[i].sport), // why not ntohs?
-			DPort:       (uint16)(values[i].dport), // why not ntohs?
-			LPort:       (uint16)(values[i].lport), // why not ntohs?
+			SPort:       ntohs((uint16)(values[i].sport)),
+			DPort:       ntohs((uint16)(values[i].dport)),
+			LPort:       ntohs((uint16)(values[i].lport)),
 			Direction:   flowDirectionFrom((C.flow_direction)(values[i].direction)),
 			L4Proto:     (uint8)(ntohs((uint16)(values[i].l4_proto))),
 			PID:         (uint32)(values[i].pid),
