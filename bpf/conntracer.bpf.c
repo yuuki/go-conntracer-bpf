@@ -38,6 +38,9 @@ static __always_inline void
 insert_tcp_flows(struct aggregated_flow_tuple *tuple, pid_t pid) {
 	struct aggregated_flow flow = {}, *val;
 
+	flow.ts_us = bpf_ktime_get_ns() / 1000;
+	flow.saddr = tuple->saddr;
+	flow.daddr = tuple->daddr;
 	flow.lport = tuple->lport;
 	flow.pid = pid;
 	flow.direction = tuple->direction;
