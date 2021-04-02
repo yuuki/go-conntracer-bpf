@@ -33,13 +33,13 @@ void read_aggr_flow_tuple_for_tcp(struct aggregated_flow_tuple *tuple, struct so
 	struct port_binding_key pb = {};
 	switch (direction) {
 		case FLOW_ACTIVE:
-			tuple->lport = dport;
+			tuple->lport = bpf_ntohs(dport);
 			break;
 		case FLOW_PASSIVE:
-			tuple->lport = sport;
+			tuple->lport = bpf_ntohs(sport);
 			break;
 		case FLOW_UNKNOWN:
-			pb.port = sport;
+			pb.port = bpf_ntohs(sport);
 			__u8 *ok = bpf_map_lookup_elem(&tcp_port_binding, &pb);
 			direction = ok ? FLOW_PASSIVE : FLOW_ACTIVE;
 			tuple->lport = ok ? sport : dport;

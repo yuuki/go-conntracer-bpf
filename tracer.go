@@ -311,7 +311,7 @@ func dumpAggrFlows(fd C.int) (map[AggrFlowTuple]*Flow, error) {
 			SAddr:       &saddr,
 			DAddr:       &daddr,
 			ProcessName: C.GoString((*C.char)(unsafe.Pointer(&values[i].task))),
-			LPort:       ntohs((uint16)(values[i].lport)),
+			LPort:       (uint16)(values[i].lport),
 			Direction:   flowDirectionFrom((C.flow_direction)(values[i].direction)),
 			L4Proto:     (uint8)(ntohs((uint16)(values[i].l4_proto))),
 			LastPID:     (uint32)(values[i].pid),
