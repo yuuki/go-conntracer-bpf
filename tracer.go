@@ -15,7 +15,6 @@ import (
 	_ "github.com/yuuki/go-conntracer-bpf/include"
 	_ "github.com/yuuki/go-conntracer-bpf/include/bpf"
 	"golang.org/x/sync/errgroup"
-	"golang.org/x/xerrors"
 )
 
 /*
@@ -292,41 +291,19 @@ func (t *Tracer) pollFlows(cb func([]*Flow) error, interval time.Duration) {
 }
 
 func dumpAggrFlows(fd C.int) (map[AggrFlowTuple]*Flow, error) {
-	pKey, pNextKey := C.NULL, unsafe.Pointer(&C.struct_aggregated_flow_tuple{})
 	keys := make([]C.struct_aggregated_flow_tuple, C.MAX_ENTRIES)
-	ckeys := unsafe.Pointer(&keys[0])
 	values := make([]C.struct_aggregated_flow, C.MAX_ENTRIES)
-	cvalues := unsafe.Pointer(&values[0])
-	opts := &C.struct_bpf_map_batch_opts{
-		elem_flags: 0,
-		flags:      0,
-		sz:         C.sizeof_struct_bpf_map_batch_opts,
-	}
 
-	var (
-		batchSize, n C.uint = 10, 0
-		nRead        int    = 0
-		ret          C.int  = 0
-		err          error
-	)
-	for ret == 0 {
-		n = batchSize
-		ret, err = C.bpf_map_lookup_and_delete_batch(fd, pKey, pNextKey,
-			unsafe.Pointer(uintptr(ckeys)+uintptr(nRead*C.sizeof_struct_aggregated_flow_tuple)),
-			unsafe.Pointer(uintptr(cvalues)+uintptr(nRead*C.sizeof_struct_aggregated_flow)),
-			&n, opts)
-		if err != nil && err != syscall.Errno(syscall.ENOENT) {
-			return nil, fmt.Errorf("Error bpf_map_lookup_and_delete_batch, fd:%d, ret:%d, %s", fd, ret, err)
-		}
-		nRead += (int)(n)
-		if err == syscall.Errno(syscall.ENOENT) {
-			break
-		}
-		pKey = pNextKey
+	nRead, err := dumpBpfMap(fd,
+		unsafe.Pointer(&keys[0]), C.sizeof_struct_aggregated_flow_tuple,
+		unsafe.Pointer(&values[0]), C.sizeof_struct_aggregated_flow,
+		defaultFlowMapOpsBatchSize)
+	if err != nil {
+		return nil, err
 	}
 
 	flows := make(map[AggrFlowTuple]*Flow, nRead)
-	for i := 0; i < nRead; i++ {
+	for i := uint32(0); i < nRead; i++ {
 		tuple := (AggrFlowTuple)(keys[i])
 		saddr := inetNtop((uint32)(values[i].saddr))
 		daddr := inetNtop((uint32)(values[i].daddr))
@@ -345,41 +322,19 @@ func dumpAggrFlows(fd C.int) (map[AggrFlowTuple]*Flow, error) {
 }
 
 func dumpAggrFlowStats(fd C.int) (map[AggrFlowTuple]*AggrFlowStat, error) {
-	pKey, pNextKey := C.NULL, unsafe.Pointer(&C.struct_aggregated_flow_tuple{})
 	keys := make([]C.struct_aggregated_flow_tuple, C.MAX_SINGLE_FLOW_ENTRIES)
-	ckeys := unsafe.Pointer(&keys[0])
 	values := make([]C.struct_aggregated_flow_stat, C.MAX_SINGLE_FLOW_ENTRIES)
-	cvalues := unsafe.Pointer(&values[0])
-	opts := &C.struct_bpf_map_batch_opts{
-		elem_flags: 0,
-		flags:      0,
-		sz:         C.sizeof_struct_bpf_map_batch_opts,
-	}
 
-	var (
-		batchSize, n C.uint = 10, 0
-		nRead        int    = 0
-		ret          C.int  = 0
-		err          error
-	)
-	for ret == 0 {
-		n = batchSize
-		ret, err = C.bpf_map_lookup_and_delete_batch(fd, pKey, pNextKey,
-			unsafe.Pointer(uintptr(ckeys)+uintptr(nRead*C.sizeof_struct_aggregated_flow_tuple)),
-			unsafe.Pointer(uintptr(cvalues)+uintptr(nRead*C.sizeof_struct_aggregated_flow_stat)),
-			&n, opts)
-		if err != nil && err != syscall.Errno(syscall.ENOENT) {
-			return nil, xerrors.Errorf("Error lookup_and_delete flow stats, fd:%d: %w", fd, err)
-		}
-		nRead += (int)(n)
-		if err == syscall.Errno(syscall.ENOENT) {
-			break
-		}
-		pKey = pNextKey
+	nRead, err := dumpBpfMap(fd,
+		unsafe.Pointer(&keys[0]), C.sizeof_struct_aggregated_flow_tuple,
+		unsafe.Pointer(&values[0]), C.sizeof_struct_aggregated_flow_stat,
+		defaultFlowMapOpsBatchSize)
+	if err != nil {
+		return nil, err
 	}
 
 	stats := make(map[AggrFlowTuple]*AggrFlowStat, nRead)
-	for i := 0; i < nRead; i++ {
+	for i := uint32(0); i < nRead; i++ {
 		tuple := (AggrFlowTuple)(keys[i])
 		stat := values[i]
 		stats[tuple] = &AggrFlowStat{
