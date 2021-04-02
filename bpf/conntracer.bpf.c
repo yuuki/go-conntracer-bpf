@@ -43,7 +43,7 @@ insert_tcp_flows(struct aggregated_flow_tuple *tuple, pid_t pid) {
 	flow.direction = tuple->direction;
 	bpf_get_current_comm(flow.task, sizeof(flow.task));
 
-	bpf_map_update_elem(&flows, &tuple, &flow, BPF_ANY);
+	bpf_map_update_elem(&flows, tuple, &flow, BPF_ANY);
 }
 
 static __always_inline void
