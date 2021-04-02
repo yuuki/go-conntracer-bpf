@@ -20,56 +20,69 @@ char LICENSE[] SEC("license") = "Dual BSD/GPL";
 
 struct {
 	__uint(type, BPF_MAP_TYPE_HASH);
-	__type(key, struct ipv4_flow_key);
+	__type(key, struct aggregated_flow_tuple);
 	__type(value, struct aggregated_flow);
 	__uint(max_entries, MAX_FLOW_ENTRIES);
 	__uint(map_flags, BPF_F_NO_PREALLOC);
 } flows SEC(".maps");
 
-static __always_inline void
-insert_tcp_flows(pid_t pid, struct sock *sk, __u16 lport, __u8 direction)
-{
-	struct aggregated_flow flow = {}, *val;
-	struct ipv4_flow_key flow_key = {};
+struct {
+	__uint(type, BPF_MAP_TYPE_HASH);
+	__type(key, struct aggregated_flow_tuple);
+	__type(value, struct aggregated_flow_stat);
+	__uint(max_entries, MAX_FLOW_ENTRIES);
+	__uint(map_flags, BPF_F_NO_PREALLOC);
+} flow_stats SEC(".maps");
 
-	BPF_CORE_READ_INTO(&flow.saddr, sk, __sk_common.skc_rcv_saddr);
-	BPF_CORE_READ_INTO(&flow.daddr, sk, __sk_common.skc_daddr);
-	flow.lport = lport;
+static __always_inline void
+insert_tcp_flows(struct aggregated_flow_tuple *tuple, pid_t pid) {
+	struct aggregated_flow flow = {}, *val;
+
+	flow.ts_us = bpf_ktime_get_ns() / 1000;
+	flow.saddr = tuple->saddr;
+	flow.daddr = tuple->daddr;
+	flow.lport = tuple->lport;
 	flow.pid = pid;
-	flow.direction = direction;
+	flow.direction = tuple->direction;
 	bpf_get_current_comm(flow.task, sizeof(flow.task));
 
-	flow_key.saddr = flow.saddr;
-	flow_key.daddr = flow.daddr;
-	flow_key.lport = flow.lport;
-	flow_key.direction = flow.direction;
-	flow_key.l4_proto = IPPROTO_TCP;
-
-	val = bpf_map_lookup_elem(&flows, &flow_key);
-	if (val) {
-		__u32 *cnt = &(val->stat.connections);
-		__atomic_add_fetch(cnt, 1, __ATOMIC_RELAXED);
-		return;
-	}
-
-	flow.stat.connections = 1;
-	bpf_map_update_elem(&flows, &flow_key, &flow, BPF_ANY);
+	bpf_map_update_elem(&flows, tuple, &flow, BPF_ANY);
 }
 
 static __always_inline void
-insert_udp_flows(pid_t pid, struct ipv4_flow_key* flow_key)
+insert_udp_flows(pid_t pid, struct aggregated_flow_tuple* tuple)
 {
 	struct aggregated_flow flow = {};
 
-	flow.saddr = flow_key->saddr;
-	flow.daddr = flow_key->daddr;
-	flow.lport = flow_key->lport;
-	flow.direction = flow_key->direction;
-	flow.l4_proto = flow_key->l4_proto;
+	flow.saddr = tuple->saddr;
+	flow.daddr = tuple->daddr;
+	flow.lport = tuple->lport;
+	flow.direction = tuple->direction;
+	flow.l4_proto = tuple->l4_proto;
 	flow.pid = pid;
 	bpf_get_current_comm(flow.task, sizeof(flow.task));
 
-	bpf_map_update_elem(&flows, flow_key, &flow, BPF_ANY);
+	bpf_map_update_elem(&flows, tuple, &flow, BPF_ANY);
+}
+
+static __always_inline void
+update_message(struct aggregated_flow_tuple* tuple, size_t sent_bytes, size_t recv_bytes)
+{
+	struct aggregated_flow_stat *val, empty = {};
+
+    __builtin_memset(&empty, 0, sizeof(struct aggregated_flow_stat));
+	bpf_map_update_elem(&flow_stats, tuple, &empty, BPF_NOEXIST);
+
+	val = bpf_map_lookup_elem(&flow_stats, tuple);
+	if (!val) return;
+	val->ts_us = bpf_ktime_get_ns() / 1000;
+
+	if (sent_bytes) {
+		__atomic_add_fetch(&val->sent_bytes, sent_bytes, __ATOMIC_RELAXED);
+	}
+	if (recv_bytes) {
+		__atomic_add_fetch(&val->recv_bytes, recv_bytes, __ATOMIC_RELAXED);
+	}
 }
 
 SEC("kprobe/tcp_v4_connect")
@@ -102,9 +115,10 @@ int BPF_KRETPROBE(tcp_v4_connect_ret, int ret)
 
 	struct sock* sk = *skpp;
 
-	BPF_CORE_READ_INTO(&dport, sk, __sk_common.skc_dport);
-
-	insert_tcp_flows(pid, sk, dport, FLOW_ACTIVE);
+	struct aggregated_flow_tuple tuple = {};
+	read_aggr_flow_tuple_for_tcp(&tuple, sk, FLOW_ACTIVE);
+	insert_tcp_flows(&tuple, pid);
+	update_message(&tuple, 0, 0);
 
 	log_debug("kretprobe/tcp_v4_connect: dport:%u, tid:%u\n", dport, pid_tgid);
 end:
@@ -117,16 +131,45 @@ int BPF_KRETPROBE(inet_csk_accept_ret, struct sock *sk)
 {
 	__u64 pid_tgid = bpf_get_current_pid_tgid();
 	__u32 pid = pid_tgid >> 32;
-	__u16 lport = 0;
 
-	if (!sk)
-		return 0;
+	if (!sk) return 0;
 
-	BPF_CORE_READ_INTO(&lport, sk, __sk_common.skc_num);
-
-	insert_tcp_flows(pid, sk, lport, FLOW_PASSIVE);
+	struct aggregated_flow_tuple tuple = {};
+	read_aggr_flow_tuple_for_tcp(&tuple, sk, FLOW_PASSIVE);
+	insert_tcp_flows(&tuple, pid);
+	update_port_binding(tuple.lport);
+	update_message(&tuple, 0, 0);
 
 	log_debug("kretprobe/inet_csk_accept: lport:%u,pid_tgid:%u\n", pid_tgid, lport);
+	return 0;
+}
+
+SEC("kprobe/tcp_sendmsg")
+int BPF_KPROBE(tcp_sendmsg, struct sock* sk, struct msghdr *msg, size_t size) {
+    __u64 pid_tgid = bpf_get_current_pid_tgid();
+	__u32 pid = pid_tgid >> 32;
+    log_debug("kprobe/tcp_sendmsg: pid_tgid:%d, size:%d\n", pid_tgid, size);
+
+    struct aggregated_flow_tuple tuple = {};
+	read_aggr_flow_tuple_for_tcp(&tuple, sk, FLOW_UNKNOWN);
+	update_message(&tuple, size, 0);
+
+    return 0;
+}
+
+SEC("kprobe/tcp_cleanup_rbuf")
+int BPF_KPROBE(tcp_cleanup_rbuf, struct sock* sk, int copied) {
+    if (copied < 0) {
+        return 0;
+    }
+    __u64 pid_tgid = bpf_get_current_pid_tgid();
+	__u32 pid = pid_tgid >> 32;
+    log_debug("kprobe/tcp_cleanup_rbuf: pid_tgid:%d, copied:%d\n", pid_tgid, copied);
+
+    struct aggregated_flow_tuple tuple = {};
+	read_aggr_flow_tuple_for_tcp(&tuple, sk, FLOW_UNKNOWN);
+    update_message(&tuple, 0, copied);
+
 	return 0;
 }
 
@@ -135,31 +178,41 @@ int BPF_KRETPROBE(inet_csk_accept_ret, struct sock *sk)
 // https://github.com/DataDog/datadog-agent/pull/6307
 SEC("kprobe/ip_make_skb")
 int BPF_KPROBE(ip_make_skb, struct sock *sk, struct flowi4 *flw4) {
+    size_t msglen = (size_t)PT_REGS_PARM5(ctx);
+
 	__u64 pid_tgid = bpf_get_current_pid_tgid();
 	__u32 pid = pid_tgid >> 32;
-	struct ipv4_flow_key flow_key = {};
+	struct aggregated_flow_tuple tuple = {};
 
-	read_flow_for_udp_send(&flow_key, sk, flw4);
-	insert_udp_flows(pid, &flow_key);
+    msglen = msglen - sizeof(struct udphdr);
 
-	log_debug("kprobe/ip_make_skb: lport:%u, tgid:%u\n",
-		flow_key.lport, pid_tgid);
+	read_flow_for_udp_send(&tuple, sk, flw4);
+	insert_udp_flows(pid, &tuple);
+    update_message(&tuple, msglen, 0);
+
+	log_debug("kprobe/ip_make_skb: lport:%u, msglen:%u, tgid:%u\n",
+		tuple.lport, msglen, pid_tgid);
 	return 0;
 }
 
 // struct sock with udp_recvmsg may not miss ip addresses on listening socket.
 // Addresses are retrieved from arguments of skb_consume_udp.
 SEC("kprobe/skb_consume_udp")
-int BPF_KPROBE(skb_consume_udp, struct sock *sk, struct sk_buff *skb) {
+int BPF_KPROBE(skb_consume_udp, struct sock *sk, struct sk_buff *skb, int len) {
+	if (len < 0) {
+		return 0;
+	}
+
 	__u64 pid_tgid = bpf_get_current_pid_tgid();
 	__u32 pid = pid_tgid >> 32;
-	struct ipv4_flow_key flow_key = {};
+	struct aggregated_flow_tuple tuple = {};
 
-	read_flow_for_udp_recv(&flow_key, sk, skb);
-	insert_udp_flows(pid, &flow_key);
+	read_flow_for_udp_recv(&tuple, sk, skb);
+	insert_udp_flows(pid, &tuple);
+    update_message(&tuple, 0, len);
 
-	log_debug("kprobe/skb_consume_udp: sport:%u, dport:%u, tid:%u\n",
-		flow_key.lport, pid_tgid);
+	log_debug("kprobe/skb_consume_udp: lport:%u, len:%u, tid:%u\n",
+		tuple.lport, len, pid_tgid);
     return 0;
 }
 

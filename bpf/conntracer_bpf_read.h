@@ -19,7 +19,39 @@ void read_flow_tuple_for_tcp(struct flow_tuple *tuple, struct sock *sk, pid_t pi
 	tuple->l4_proto = IPPROTO_TCP;
 }
 
-static __always_inline void read_flow_for_udp_send(struct ipv4_flow_key *flow_key, struct sock *sk, struct flowi4 *flw4) {
+static __always_inline
+void read_aggr_flow_tuple_for_tcp(struct aggregated_flow_tuple *tuple, struct sock *sk, flow_direction direction) {
+	__u16 sport, dport;
+
+	BPF_CORE_READ_INTO(&tuple->saddr, sk, __sk_common.skc_rcv_saddr);
+	BPF_CORE_READ_INTO(&tuple->daddr, sk, __sk_common.skc_daddr);
+	BPF_CORE_READ_INTO(&sport, sk, __sk_common.skc_num);
+	BPF_CORE_READ_INTO(&dport, sk, __sk_common.skc_dport);
+
+	tuple->l4_proto = IPPROTO_TCP;
+
+	struct port_binding_key pb = {};
+	switch (direction) {
+		case FLOW_ACTIVE:
+			tuple->lport = bpf_ntohs(dport);
+			break;
+		case FLOW_PASSIVE:
+			tuple->lport = bpf_ntohs(sport);
+			break;
+		case FLOW_UNKNOWN:
+			pb.port = bpf_ntohs(sport);
+			__u8 *ok = bpf_map_lookup_elem(&tcp_port_binding, &pb);
+			direction = ok ? FLOW_PASSIVE : FLOW_ACTIVE;
+			tuple->lport = ok ? sport : dport;
+			break;
+		default:
+			log_debug("unreachable statement\n");
+			break;
+	}
+	tuple->direction = direction;
+}
+
+static __always_inline void read_flow_for_udp_send(struct aggregated_flow_tuple *tuple, struct sock *sk, struct flowi4 *flw4) {
 	__u16 dport, sport;
 
 	BPF_CORE_READ_INTO(&sport, sk, __sk_common.skc_num);
@@ -27,20 +59,20 @@ static __always_inline void read_flow_for_udp_send(struct ipv4_flow_key *flow_ke
 
 	__u8 *sstate = bpf_map_lookup_elem(&udp_port_binding, &sport);
 	if (sstate) {
-		BPF_CORE_READ_INTO(&flow_key->saddr, flw4, daddr);
-		BPF_CORE_READ_INTO(&flow_key->daddr, flw4, saddr);
-		flow_key->direction = FLOW_PASSIVE;
-		flow_key->lport = bpf_htons(sport);
+		BPF_CORE_READ_INTO(&tuple->saddr, flw4, daddr);
+		BPF_CORE_READ_INTO(&tuple->daddr, flw4, saddr);
+		tuple->direction = FLOW_PASSIVE;
+		tuple->lport = bpf_htons(sport);
 	} else {
-		BPF_CORE_READ_INTO(&flow_key->saddr, flw4, saddr);
-		BPF_CORE_READ_INTO(&flow_key->daddr, flw4, daddr);
-		flow_key->direction = FLOW_ACTIVE;
-		flow_key->lport = dport;
+		BPF_CORE_READ_INTO(&tuple->saddr, flw4, saddr);
+		BPF_CORE_READ_INTO(&tuple->daddr, flw4, daddr);
+		tuple->direction = FLOW_ACTIVE;
+		tuple->lport = dport;
 	}
-	flow_key->l4_proto = IPPROTO_UDP;
+	tuple->l4_proto = IPPROTO_UDP;
 }
 
-static __always_inline void read_flow_for_udp_recv(struct ipv4_flow_key *flow_key, struct sock *sk, struct sk_buff *skb) {
+static __always_inline void read_flow_for_udp_recv(struct aggregated_flow_tuple *tuple, struct sock *sk, struct sk_buff *skb) {
 	struct udphdr *udphdr = (struct udphdr *)(BPF_CORE_READ(skb, head)
 		+ BPF_CORE_READ(skb,transport_header));
 	struct iphdr *iphdr = (struct iphdr *)(BPF_CORE_READ(skb, head)
@@ -52,18 +84,18 @@ static __always_inline void read_flow_for_udp_recv(struct ipv4_flow_key *flow_ke
 	__u16 dport_key = bpf_htons(dport);
 	__u8 *sstate = bpf_map_lookup_elem(&udp_port_binding, &dport_key);
 	if (sstate) {
-		flow_key->saddr = BPF_CORE_READ(iphdr, saddr);
-		flow_key->daddr = BPF_CORE_READ(iphdr, daddr);
-		flow_key->direction = FLOW_PASSIVE;
-		flow_key->lport = dport;
+		tuple->saddr = BPF_CORE_READ(iphdr, saddr);
+		tuple->daddr = BPF_CORE_READ(iphdr, daddr);
+		tuple->direction = FLOW_PASSIVE;
+		tuple->lport = dport;
 	} else {
-		flow_key->saddr = BPF_CORE_READ(iphdr, daddr);
-		flow_key->daddr = BPF_CORE_READ(iphdr, saddr);
-		flow_key->direction = FLOW_ACTIVE;
-		flow_key->lport = sport;
+		tuple->saddr = BPF_CORE_READ(iphdr, daddr);
+		tuple->daddr = BPF_CORE_READ(iphdr, saddr);
+		tuple->direction = FLOW_ACTIVE;
+		tuple->lport = sport;
 	}
 
-	flow_key->l4_proto = IPPROTO_UDP;
+	tuple->l4_proto = IPPROTO_UDP;
 }
 
 static __always_inline 

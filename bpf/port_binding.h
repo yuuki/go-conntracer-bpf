@@ -13,6 +13,13 @@
 #define AF_INET		2
 #define AF_INET6	10
 
+static __always_inline void update_port_binding(__u16 lport) {
+	struct port_binding_key key = {};
+	key.port = lport;
+	__u8 state = PORT_LISTENING;
+	bpf_map_update_elem(&tcp_port_binding, &key, &state, BPF_ANY);
+}
+
 static __always_inline int sys_enter_socket(int family, int type, __u64 tid) {
 	// detect if protocol is udp or not.
     if ((family & (AF_INET | AF_INET6)) > 0 && (type & SOCK_DGRAM) > 0) {

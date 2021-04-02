@@ -14,6 +14,7 @@ import (
 	// Put the C header files into Go module management
 	_ "github.com/yuuki/go-conntracer-bpf/include"
 	_ "github.com/yuuki/go-conntracer-bpf/include/bpf"
+	"golang.org/x/sync/errgroup"
 )
 
 /*
@@ -59,7 +60,17 @@ func flowDirectionFrom(x C.flow_direction) FlowDirection {
 	return FlowUnknown
 }
 
-// Flow is a bunch of aggregated connections group by listening port.
+/*
+aggregated_flow_tuple
+__u32 saddr;
+__u32 daddr;
+__u16 lport;
+__u8 direction;
+__u8 l4_proto;
+*/
+type AggrFlowTuple C.struct_aggregated_flow_tuple
+
+// Flow is a bunch of aggregated flows grouped by listening port.
 type Flow struct {
 	SAddr       *net.IP
 	DAddr       *net.IP
@@ -68,7 +79,24 @@ type Flow struct {
 	Direction   FlowDirection
 	LastPID     uint32
 	L4Proto     uint8
-	Stat        *FlowStat
+	Stat        *AggrFlowStat
+}
+
+// AggrFlowStat is an statistics for aggregated flows.
+type AggrFlowStat struct {
+	Timestamp time.Time
+	sentBytes uint64
+	recvBytes uint64
+}
+
+// SentBytes returns sent kB/sec.
+func (s *AggrFlowStat) SentBytes(d time.Duration) float64 {
+	return float64(s.sentBytes) / 1024 / d.Seconds()
+}
+
+// RecvBytes returns recv kB/sec.
+func (s *AggrFlowStat) RecvBytes(d time.Duration) float64 {
+	return float64(s.recvBytes) / 1024 / d.Seconds()
 }
 
 /*
@@ -194,11 +222,48 @@ func (t *Tracer) Stop() {
 
 // DumpFlows gets and deletes all flows.
 func (t *Tracer) DumpFlows() ([]*Flow, error) {
-	return dumpFlows(t.flowsMapFD())
+	eg := errgroup.Group{}
+	flowChan := make(chan map[AggrFlowTuple]*Flow, 1)
+	statChan := make(chan map[AggrFlowTuple]*AggrFlowStat, 1)
+	eg.Go(func() error {
+		flow, err := dumpAggrFlows(t.flowsMapFD())
+		if err != nil {
+			return err
+		}
+		flowChan <- flow
+		close(flowChan)
+		return nil
+	})
+	eg.Go(func() error {
+		stats, err := dumpAggrFlowStats(t.flowStatsMapFD())
+		if err != nil {
+			return err
+		}
+		statChan <- stats
+		close(statChan)
+		return nil
+	})
+	if err := eg.Wait(); err != nil {
+		return nil, err
+	}
+
+	// merge two maps
+	flows := <-flowChan
+	stats := <-statChan
+	merged := make([]*Flow, 0, len(flows))
+	for t, flow := range flows {
+		flow.Stat = stats[t]
+		merged = append(merged, flow)
+	}
+	return merged, nil
 }
 
 func (t *Tracer) flowsMapFD() C.int {
 	return C.bpf_map__fd(t.obj.maps.flows)
+}
+
+func (t *Tracer) flowStatsMapFD() C.int {
+	return C.bpf_map__fd(t.obj.maps.flow_stats)
 }
 
 func (t *Tracer) udpPortBindingMapFD() C.int {
@@ -225,60 +290,61 @@ func (t *Tracer) pollFlows(cb func([]*Flow) error, interval time.Duration) {
 	}
 }
 
-func dumpFlows(fd C.int) ([]*Flow, error) {
-	pKey, pNextKey := C.NULL, unsafe.Pointer(&C.struct_ipv4_flow_key{})
-	keys := make([]C.struct_ipv4_flow_key, C.MAX_ENTRIES)
-	ckeys := unsafe.Pointer(&keys[0])
+func dumpAggrFlows(fd C.int) (map[AggrFlowTuple]*Flow, error) {
+	keys := make([]C.struct_aggregated_flow_tuple, C.MAX_ENTRIES)
 	values := make([]C.struct_aggregated_flow, C.MAX_ENTRIES)
-	cvalues := unsafe.Pointer(&values[0])
-	opts := &C.struct_bpf_map_batch_opts{
-		elem_flags: 0,
-		flags:      0,
-		sz:         C.sizeof_struct_bpf_map_batch_opts,
+
+	nRead, err := dumpBpfMap(fd,
+		unsafe.Pointer(&keys[0]), C.sizeof_struct_aggregated_flow_tuple,
+		unsafe.Pointer(&values[0]), C.sizeof_struct_aggregated_flow,
+		defaultFlowMapOpsBatchSize)
+	if err != nil {
+		return nil, err
 	}
 
-	var (
-		batchSize, n C.uint = 10, 0
-		nRead        int    = 0
-		ret          C.int  = 0
-		err          error
-	)
-	for ret == 0 {
-		n = batchSize
-		ret, err = C.bpf_map_lookup_and_delete_batch(fd, pKey, pNextKey,
-			unsafe.Pointer(uintptr(ckeys)+uintptr(nRead*C.sizeof_struct_ipv4_flow_key)),
-			unsafe.Pointer(uintptr(cvalues)+uintptr(nRead*C.sizeof_struct_aggregated_flow)),
-			&n, opts)
-		if err != nil && err != syscall.Errno(syscall.ENOENT) {
-			return nil, fmt.Errorf("Error bpf_map_lookup_and_delete_batch, fd:%d, ret:%d, %s", fd, ret, err)
-		}
-		nRead += (int)(n)
-		if err == syscall.Errno(syscall.ENOENT) {
-			break
-		}
-		pKey = pNextKey
-	}
-
-	flows := make([]*Flow, 0, nRead)
-	for i := 0; i < nRead; i++ {
+	flows := make(map[AggrFlowTuple]*Flow, nRead)
+	for i := uint32(0); i < nRead; i++ {
+		tuple := (AggrFlowTuple)(keys[i])
 		saddr := inetNtop((uint32)(values[i].saddr))
 		daddr := inetNtop((uint32)(values[i].daddr))
-		flow := &Flow{
+		flows[tuple] = &Flow{
 			SAddr:       &saddr,
 			DAddr:       &daddr,
 			ProcessName: C.GoString((*C.char)(unsafe.Pointer(&values[i].task))),
-			LPort:       ntohs((uint16)(values[i].lport)),
+			LPort:       (uint16)(values[i].lport),
 			Direction:   flowDirectionFrom((C.flow_direction)(values[i].direction)),
 			L4Proto:     (uint8)(ntohs((uint16)(values[i].l4_proto))),
 			LastPID:     (uint32)(values[i].pid),
-			Stat: &FlowStat{
-				NewConnections: (uint32)(values[i].stat.connections),
-			},
 		}
-		flows = append(flows, flow)
 	}
 
 	return flows, nil
+}
+
+func dumpAggrFlowStats(fd C.int) (map[AggrFlowTuple]*AggrFlowStat, error) {
+	keys := make([]C.struct_aggregated_flow_tuple, C.MAX_SINGLE_FLOW_ENTRIES)
+	values := make([]C.struct_aggregated_flow_stat, C.MAX_SINGLE_FLOW_ENTRIES)
+
+	nRead, err := dumpBpfMap(fd,
+		unsafe.Pointer(&keys[0]), C.sizeof_struct_aggregated_flow_tuple,
+		unsafe.Pointer(&values[0]), C.sizeof_struct_aggregated_flow_stat,
+		defaultFlowMapOpsBatchSize)
+	if err != nil {
+		return nil, err
+	}
+
+	stats := make(map[AggrFlowTuple]*AggrFlowStat, nRead)
+	for i := uint32(0); i < nRead; i++ {
+		tuple := (AggrFlowTuple)(keys[i])
+		stat := values[i]
+		stats[tuple] = &AggrFlowStat{
+			Timestamp: time.Unix((int64)(stat.ts_us)*1000*1000, 0),
+			sentBytes: (uint64)(stat.sent_bytes),
+			recvBytes: (uint64)(stat.recv_bytes),
+		}
+	}
+
+	return stats, nil
 }
 
 // GetStats fetches stats of BPF program.

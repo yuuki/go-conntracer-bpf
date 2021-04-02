@@ -21,7 +21,7 @@ struct {
 	__uint(type, BPF_MAP_TYPE_HASH);
 	__type(key, struct flow_tuple);
 	__type(value, struct single_flow);
-	__uint(max_entries, MAX_FLOW_ENTRIES);
+	__uint(max_entries, MAX_SINGLE_FLOW_ENTRIES);
 	__uint(map_flags, BPF_F_NO_PREALLOC);
 } flows SEC(".maps");
 
@@ -29,7 +29,7 @@ struct {
 	__uint(type, BPF_MAP_TYPE_HASH);
 	__type(key, struct flow_tuple);
 	__type(value, struct single_flow_stat);
-	__uint(max_entries, MAX_FLOW_ENTRIES);
+	__uint(max_entries, MAX_SINGLE_FLOW_ENTRIES);
 	__uint(map_flags, BPF_F_NO_PREALLOC);
 } flow_stats SEC(".maps");
 
