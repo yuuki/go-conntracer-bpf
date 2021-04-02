@@ -99,9 +99,9 @@ func runKernelAggr(sig chan os.Signal) {
 		for _, flow := range flows {
 			switch flow.Direction {
 			case conntracer.FlowActive:
-				fmt.Printf("%-25s %-25s %-20d %-10d %-20s %-10d\n", flow.SAddr, flow.DAddr, flow.LPort, flow.LastPID, flow.ProcessName, flow.Stat.NewConnections)
+				fmt.Printf("%-25s %-25s %-20d %-10d %-20s %-10.2f %-10.2f\n", flow.SAddr, flow.DAddr, flow.LPort, flow.LastPID, flow.ProcessName, flow.Stat.SentBytes(interval), flow.Stat.RecvBytes(interval))
 			case conntracer.FlowPassive:
-				fmt.Printf("%-25s %-25s %-20d %-10d %-20s %-10d\n", flow.DAddr, flow.SAddr, flow.LPort, flow.LastPID, flow.ProcessName, flow.Stat.NewConnections)
+				fmt.Printf("%-25s %-25s %-20d %-10d %-20s %-10.2f %-10.2f\n", flow.DAddr, flow.SAddr, flow.LPort, flow.LastPID, flow.ProcessName, flow.Stat.SentBytes(interval), flow.Stat.RecvBytes(interval))
 			default:
 				log.Printf("wrong direction '%d'\n", flow.Direction)
 			}
@@ -115,7 +115,7 @@ func runKernelAggr(sig chan os.Signal) {
 	}
 
 	// print header
-	fmt.Printf("%-25s %-25s %-20s %-10s %-20s %-10s\n", "LADDR", "RADDR", "LPORT", "PID", "COMM", "CONNECTIONS")
+	fmt.Printf("%-25s %-25s %-20s %-10s %-20s %-10s %-10s\n", "LADDR", "RADDR", "LPORT", "PID", "COMM", "SENT_BYTES(kB/s)", "RECV_BYTES(kB/s)")
 
 	ret := <-sig
 	t.Stop()
