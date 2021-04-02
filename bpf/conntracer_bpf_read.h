@@ -30,7 +30,7 @@ void read_aggr_flow_tuple_for_tcp(struct aggregated_flow_tuple *tuple, struct so
 
 	tuple->l4_proto = IPPROTO_TCP;
 
-	tuple->direction = direction;
+	struct port_binding_key pb = {};
 	switch (direction) {
 		case FLOW_ACTIVE:
 			tuple->lport = dport;
@@ -38,10 +38,17 @@ void read_aggr_flow_tuple_for_tcp(struct aggregated_flow_tuple *tuple, struct so
 		case FLOW_PASSIVE:
 			tuple->lport = sport;
 			break;
+		case FLOW_UNKNOWN:
+			pb.port = sport;
+			__u8 *ok = bpf_map_lookup_elem(&tcp_port_binding, &pb);
+			direction = ok ? FLOW_PASSIVE : FLOW_ACTIVE;
+			tuple->lport = ok ? sport : dport;
+			break;
 		default:
 			log_debug("unreachable statement\n");
 			break;
 	}
+	tuple->direction = direction;
 }
 
 static __always_inline void read_flow_for_udp_send(struct aggregated_flow_tuple *tuple, struct sock *sk, struct flowi4 *flw4) {

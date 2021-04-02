@@ -131,13 +131,13 @@ int BPF_KRETPROBE(inet_csk_accept_ret, struct sock *sk)
 {
 	__u64 pid_tgid = bpf_get_current_pid_tgid();
 	__u32 pid = pid_tgid >> 32;
-	__u16 lport = 0;
 
 	if (!sk) return 0;
 
 	struct aggregated_flow_tuple tuple = {};
 	read_aggr_flow_tuple_for_tcp(&tuple, sk, FLOW_PASSIVE);
 	insert_tcp_flows(&tuple, pid);
+	update_port_binding(tuple.lport);
 	update_message(&tuple, 0, 0);
 
 	log_debug("kretprobe/inet_csk_accept: lport:%u,pid_tgid:%u\n", pid_tgid, lport);
@@ -151,7 +151,7 @@ int BPF_KPROBE(tcp_sendmsg, struct sock* sk, struct msghdr *msg, size_t size) {
     log_debug("kprobe/tcp_sendmsg: pid_tgid:%d, size:%d\n", pid_tgid, size);
 
     struct aggregated_flow_tuple tuple = {};
-	read_aggr_flow_tuple_for_tcp(&tuple, sk, pid);
+	read_aggr_flow_tuple_for_tcp(&tuple, sk, FLOW_UNKNOWN);
 	update_message(&tuple, size, 0);
 
     return 0;
@@ -167,7 +167,7 @@ int BPF_KPROBE(tcp_cleanup_rbuf, struct sock* sk, int copied) {
     log_debug("kprobe/tcp_cleanup_rbuf: pid_tgid:%d, copied:%d\n", pid_tgid, copied);
 
     struct aggregated_flow_tuple tuple = {};
-	read_aggr_flow_tuple_for_tcp(&tuple, sk, pid);
+	read_aggr_flow_tuple_for_tcp(&tuple, sk, FLOW_UNKNOWN);
     update_message(&tuple, 0, copied);
 
 	return 0;
