@@ -221,15 +221,5 @@ func dumpSingleFlows(fd C.int) (map[SingleFlowTuple]*SingleFlow, error) {
 
 // GetStats fetches stats of BPF program.
 func (t *TracerInFlowAggr) GetStats() (map[int]*BpfProgramStats, error) {
-	res := map[int]*BpfProgramStats{}
-	for prog := C.bpf_program__next(nil, t.obj.obj); prog != nil; prog = C.bpf_program__next((*C.struct_bpf_program)(prog), t.obj.obj) {
-		fd := int(C.bpf_program__fd(prog))
-		name := C.GoString(C.bpf_program__name(prog))
-		stats, err := getProgramStats(fd, name)
-		if err != nil {
-			return nil, err
-		}
-		res[fd] = stats
-	}
-	return res, nil
+	return getBPFAllStats(t.obj.obj)
 }

@@ -44,3 +44,17 @@ func getProgramStats(fd int, name string) (*BpfProgramStats, error) {
 		RunTime:  time.Duration(info.run_time_ns),
 	}, nil
 }
+
+func getBPFAllStats(obj *C.struct_bpf_object) (map[int]*BpfProgramStats, error) {
+	res := map[int]*BpfProgramStats{}
+	for prog := C.bpf_program__next(nil, obj); prog != nil; prog = C.bpf_program__next((*C.struct_bpf_program)(prog), obj) {
+		fd := int(C.bpf_program__fd(prog))
+		name := C.GoString(C.bpf_program__name(prog))
+		stats, err := getProgramStats(fd, name)
+		if err != nil {
+			return nil, err
+		}
+		res[fd] = stats
+	}
+	return res, nil
+}
