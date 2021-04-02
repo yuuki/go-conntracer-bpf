@@ -173,6 +173,22 @@ int BPF_KPROBE(tcp_cleanup_rbuf, struct sock* sk, int copied) {
 	return 0;
 }
 
+SEC("kprobe/inet_csk_listen_stop")
+int BPF_KPROBE(inet_csk_listen_stop, struct sock* sk) {
+    __u16 lport = read_sport(sk);
+    if (lport == 0) {
+        log_debug("kprobe/inet_csk_listen_stop error: lport is 0\n");
+        return 0;
+    }
+
+    struct port_binding_key pb = {};
+    pb.port = lport;
+    bpf_map_delete_elem(&tcp_port_binding, &pb);
+
+    log_debug("kprobe/inet_csk_listen_stop: lport: %u\n", t.port);
+    return 0;
+}
+
 // struct sock with udp_sendmsg may not miss ip addresses on listening socket.
 // Addresses are retrieved from struct flowi4 with ip_make_skb.
 // https://github.com/DataDog/datadog-agent/pull/6307

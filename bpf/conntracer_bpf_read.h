@@ -9,6 +9,17 @@
 #include "conntracer.h"
 #include "maps.h"
 
+static __always_inline __u16 read_sport(struct sock* sk) {
+    __u16 sport = 0;
+    BPF_CORE_READ_INTO(&sport, sk, __sk_common.skc_num);
+    if (sport == 0) {
+		struct inet_sock *isk = (struct inet_sock *)sk;
+		BPF_CORE_READ_INTO(&sport, isk, inet_sport);
+		sport = bpf_ntohs(sport);
+    }
+    return sport;
+}
+
 static __always_inline
 void read_flow_tuple_for_tcp(struct flow_tuple *tuple, struct sock *sk, pid_t pid) {
 	BPF_CORE_READ_INTO(&tuple->saddr, sk, __sk_common.skc_rcv_saddr);
