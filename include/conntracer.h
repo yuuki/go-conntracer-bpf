@@ -11,7 +11,7 @@
 
 /* Helper to output debug logs to /sys/kernel/debug/tracing/trace_pipe
  */
-#if DEBUG == 1
+#ifdef DEBUG
 #define log_debug(fmt, ...)                                        \
     ({                                                             \
         char ____fmt[] = fmt;                                      \

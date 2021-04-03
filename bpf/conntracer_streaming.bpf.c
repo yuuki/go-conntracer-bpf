@@ -98,6 +98,7 @@ int BPF_KRETPROBE(tcp_v4_connect_ret, int ret)
 	struct sock* sk = *skpp;
 
 	BPF_CORE_READ_INTO(&dport, sk, __sk_common.skc_dport);
+	dport = bpf_ntohs(dport);
 
 	insert_tcp_flows(pid, sk, dport, FLOW_ACTIVE);
 
@@ -112,16 +113,13 @@ int BPF_KRETPROBE(inet_csk_accept_ret, struct sock *sk)
 {
 	__u64 pid_tgid = bpf_get_current_pid_tgid();
 	__u32 pid = pid_tgid >> 32;
-	__u16 lport = 0;
 
-	if (!sk)
-		return 0;
+	if (!sk) return 0;
 
-	BPF_CORE_READ_INTO(&lport, sk, __sk_common.skc_num);
+	__u16 sport = read_sport(sk);
+	insert_tcp_flows(pid, sk, sport, FLOW_PASSIVE);
 
-	insert_tcp_flows(pid, sk, lport, FLOW_PASSIVE);
-
-	log_debug("kretprobe/inet_csk_accept: pid_tgid:%d, lport:%d\n", pid_tgid, lport);
+	log_debug("kretprobe/inet_csk_accept: pid_tgid:%d, lport:%d\n", pid_tgid, sport);
 	return 0;
 }
 

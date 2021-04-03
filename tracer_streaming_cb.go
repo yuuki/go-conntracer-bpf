@@ -24,7 +24,7 @@ func handleFlow(ctx unsafe.Pointer, data unsafe.Pointer, dataSZ C.__u32) C.int {
 		SAddr:       &saddr,
 		DAddr:       &daddr,
 		ProcessName: C.GoString((*C.char)(unsafe.Pointer(&cflow.task))),
-		LPort:       ntohs((uint16)(cflow.lport)),
+		LPort:       (uint16)(cflow.lport),
 		Direction:   flowDirectionFrom((C.flow_direction)(cflow.direction)),
 		LastPID:     (uint32)(cflow.pid),
 	}
