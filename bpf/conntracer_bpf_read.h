@@ -19,6 +19,16 @@ static __always_inline __u16 read_sport(struct sock* sk) {
 	return bpf_ntohs(sport);
 }
 
+static __always_inline struct iphdr* get_iphdr(struct sk_buff *skb) {
+	return (struct iphdr *)(BPF_CORE_READ(skb, head)
+		+ BPF_CORE_READ(skb, network_header));
+}
+
+static __always_inline struct udphdr* get_udphdr(struct sk_buff *skb) {
+	return (struct udphdr *)(BPF_CORE_READ(skb, head)
+		+ BPF_CORE_READ(skb, transport_header));
+}
+
 static __always_inline __u16 read_dport(struct sock* sk) {
     __u16 dport = 0;
     BPF_CORE_READ_INTO(&dport, sk, __sk_common.skc_dport);
@@ -66,22 +76,25 @@ void read_aggr_flow_tuple_for_tcp(struct aggregated_flow_tuple *tuple, struct so
 	tuple->direction = direction;
 }
 
-static __always_inline void read_flow_for_udp_send(struct aggregated_flow_tuple *tuple, struct sock *sk, struct flowi4 *flw4) {
-	__u16 sport = read_sport(sk);
-	__u16 dport = read_dport(sk);
+static __always_inline void read_flow_for_udp_send(struct aggregated_flow_tuple *tuple, struct sk_buff *skb) {
+	struct udphdr *udphdr = get_udphdr(skb);
+	struct iphdr *iphdr = get_iphdr(skb);
+
+	__u16 sport = bpf_ntohs(BPF_CORE_READ(udphdr, source));
+	__u16 dport = bpf_ntohs(BPF_CORE_READ(udphdr, dest));
 
 	log_debug("read_flow_for_udp_send: sport:%u, dport:%u\n", sport, dport);
 	__u8 *sstate = bpf_map_lookup_elem(&udp_port_binding, &sport);
 	if (sstate) {
-		BPF_CORE_READ_INTO(&tuple->saddr, flw4, daddr);
-		BPF_CORE_READ_INTO(&tuple->daddr, flw4, saddr);
+		BPF_CORE_READ_INTO(&tuple->saddr, iphdr, daddr);
+		BPF_CORE_READ_INTO(&tuple->daddr, iphdr, saddr);
 		tuple->direction = FLOW_PASSIVE;
 		tuple->lport = sport;
 	} else {
-		BPF_CORE_READ_INTO(&tuple->saddr, flw4, saddr);
-		BPF_CORE_READ_INTO(&tuple->daddr, flw4, daddr);
+		BPF_CORE_READ_INTO(&tuple->saddr, iphdr, saddr);
+		BPF_CORE_READ_INTO(&tuple->daddr, iphdr, daddr);
 		tuple->direction = FLOW_ACTIVE;
-		tuple->lport = bpf_ntohs(dport);
+		tuple->lport = dport;
 	}
 	tuple->l4_proto = IPPROTO_UDP;
 }
@@ -92,7 +105,7 @@ static __always_inline void read_flow_for_udp_recv(struct aggregated_flow_tuple 
 	struct iphdr *iphdr = (struct iphdr *)(BPF_CORE_READ(skb, head)
         + BPF_CORE_READ(skb, network_header));
 
-	__u16 sport = BPF_CORE_READ(udphdr, source);
+	__u16 sport = bpf_ntohs(BPF_CORE_READ(udphdr, source));
 	__u16 dport = bpf_ntohs(BPF_CORE_READ(udphdr, dest));
 	log_debug("read_flow_for_udp_recv: sport:%u, dport:%u\n", sport, dport);
 
@@ -114,21 +127,26 @@ static __always_inline void read_flow_for_udp_recv(struct aggregated_flow_tuple 
 
 static __always_inline 
 void read_flow_tuple_for_udp_send(struct flow_tuple *tuple, 
-	__u8 *direction, __u16 *lport, struct sock *sk, struct flowi4 *flw4) {
-	__u16 sport = read_sport(sk);
-	__u16 dport = read_dport(sk);
+	__u8 *direction, __u16 *lport, struct sk_buff *skb) {
+	struct udphdr *udphdr = (struct udphdr *)(BPF_CORE_READ(skb, head)
+		+ BPF_CORE_READ(skb,transport_header));
+	struct iphdr *iphdr = (struct iphdr *)(BPF_CORE_READ(skb, head)
+        + BPF_CORE_READ(skb, network_header));
+
+	__u16 sport = bpf_ntohs(BPF_CORE_READ(udphdr, source));
+	__u16 dport = bpf_ntohs(BPF_CORE_READ(udphdr, dest));
 
 	__u8 *sstate = bpf_map_lookup_elem(&udp_port_binding, &sport);
 	if (sstate) {
-		BPF_CORE_READ_INTO(&tuple->saddr, flw4, daddr);
-		BPF_CORE_READ_INTO(&tuple->daddr, flw4, saddr);
+		BPF_CORE_READ_INTO(&tuple->saddr, iphdr, daddr);
+		BPF_CORE_READ_INTO(&tuple->daddr, iphdr, saddr);
 		*direction = FLOW_PASSIVE;
 		*lport = sport;
 	} else {
-		BPF_CORE_READ_INTO(&tuple->saddr, flw4, saddr);
-		BPF_CORE_READ_INTO(&tuple->daddr, flw4, daddr);
+		BPF_CORE_READ_INTO(&tuple->saddr, iphdr, saddr);
+		BPF_CORE_READ_INTO(&tuple->daddr, iphdr, daddr);
 		*direction = FLOW_ACTIVE;
-		*lport = bpf_ntohs(dport);
+		*lport = dport;
 	}
 	tuple->l4_proto = IPPROTO_UDP;
 }
@@ -137,12 +155,10 @@ static __always_inline
 void read_flow_tuple_for_udp_recv(struct flow_tuple *tuple, 
 	__u8 *direction, __u16 *lport, struct sock *sk, struct sk_buff *skb)
 {
-	struct udphdr *udphdr = (struct udphdr *)(BPF_CORE_READ(skb, head)
-		+ BPF_CORE_READ(skb,transport_header));
-	struct iphdr *iphdr = (struct iphdr *)(BPF_CORE_READ(skb, head)
-        + BPF_CORE_READ(skb, network_header));
+	struct udphdr *udphdr = get_udphdr(skb);
+	struct iphdr *iphdr = get_iphdr(skb);
 
-	__u16 sport = BPF_CORE_READ(udphdr, source);
+	__u16 sport = bpf_ntohs(BPF_CORE_READ(udphdr, source));
 	__u16 dport = bpf_ntohs(BPF_CORE_READ(udphdr, dest));
 
 	__u8 *sstate = bpf_map_lookup_elem(&udp_port_binding, &dport);

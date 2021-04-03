@@ -126,17 +126,22 @@ int BPF_KRETPROBE(inet_csk_accept_ret, struct sock *sk)
 // struct sock with udp_sendmsg may not miss ip addresses on listening socket.
 // Addresses are retrieved from struct flowi4 with ip_make_skb.
 // https://github.com/DataDog/datadog-agent/pull/6307
-SEC("kprobe/ip_make_skb")
-int BPF_KPROBE(ip_make_skb, struct sock *sk, struct flowi4 *flw4) {
+SEC("kprobe/ip_send_skb")
+int BPF_KPROBE(ip_send_skb, struct net *net, struct sk_buff *skb) {
+	__u16 protocol = BPF_CORE_READ(skb, protocol);
+	if (protocol != IPPROTO_UDP) {
+		return 0;
+	}
+
 	__u64 pid_tgid = bpf_get_current_pid_tgid();
 	__u32 pid = pid_tgid >> 32;
-	struct aggregated_flow_tuple flow_key = {};
+	struct aggregated_flow_tuple tuple = {};
 
-	read_flow_for_udp_send(&flow_key, sk, flw4);
-	insert_udp_flows(pid, &flow_key);
+	read_flow_for_udp_send(&tuple, skb);
+	insert_udp_flows(pid, &tuple);
 
 	log_debug("kprobe/ip_make_skb: lport:%u, tgid:%u\n",
-		flow_key.lport, pid_tgid);
+		tuple.lport, pid_tgid);
 	return 0;
 }
 
