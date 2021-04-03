@@ -18,7 +18,13 @@ INCLUDES := -I$(OUTPUT) -I$(INCLUDE_DIR)
 CFLAGS := -g -Wall
 ARCH_UNAME := $(shell uname -m)
 ARCH ?= $(ARCH_UNAME:aarch64=arm64)
+CLANG_FLAGS := -g -O2 -target bpf -fPIE
 BPF_DEBUG ?= 0
+ifeq ($(BPF_DEBUG), 1)
+    CLANG_FLAGS += -DDEBUG
+else
+    CLANG_FLAGS += -DNDEBUG
+endif
 
 DOCKER_BUILDER ?= $(TOOL)-builder
 OUT_DOCKER ?= conntracer-conntop
@@ -58,7 +64,7 @@ $(LIBBPF_OBJ): $(wildcard $(LIBBPF_SRC)/*.[ch] $(LIBBPF_SRC)/Makefile) | $(OUTPU
 linux_arch := $(ARCH:x86_64=x86)
 $(OUTPUT)/%.bpf.o: $(BPF_SRC_DIR)/%.bpf.c $(LIBBPF_OBJ) $(wildcard %.h) $(BPF_SRC_DIR)/vmlinux.h | $(OUTPUT)
 	$(call msg,BPF,$@)
-	@$(CMD_CLANG) -g -O2 -target bpf -fPIE -D__TARGET_ARCH_$(linux_arch) -DDEBUG=$(BPF_DEBUG) $(INCLUDES) -c $(filter %.c,$^) -o $@
+	@$(CMD_CLANG) $(CLANG_FLAGS) -D__TARGET_ARCH_$(linux_arch) $(INCLUDES) -c $(filter %.c,$^) -o $@
 	@$(LLVM_STRIP) -g $@ # strip useless DWARF info
 
 # Generate BPF skeletons
