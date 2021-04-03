@@ -140,7 +140,7 @@ int BPF_KRETPROBE(inet_csk_accept_ret, struct sock *sk)
 	update_port_binding(tuple.lport);
 	update_message(&tuple, 0, 0);
 
-	log_debug("kretprobe/inet_csk_accept: lport:%u,pid_tgid:%u\n", pid_tgid, lport);
+	log_debug("kretprobe/inet_csk_accept: lport:%u, tgid:%u\n", tuple.lport, pid_tgid);
 	return 0;
 }
 
@@ -148,12 +148,12 @@ SEC("kprobe/tcp_sendmsg")
 int BPF_KPROBE(tcp_sendmsg, struct sock* sk, struct msghdr *msg, size_t size) {
     __u64 pid_tgid = bpf_get_current_pid_tgid();
 	__u32 pid = pid_tgid >> 32;
-    log_debug("kprobe/tcp_sendmsg: pid_tgid:%d, size:%d\n", pid_tgid, size);
 
     struct aggregated_flow_tuple tuple = {};
 	read_aggr_flow_tuple_for_tcp(&tuple, sk, FLOW_UNKNOWN);
 	update_message(&tuple, size, 0);
 
+    log_debug("kprobe/tcp_sendmsg: size:%d, lport:%u, tgid:%d\n", size, tuple.lport, pid_tgid);
     return 0;
 }
 
@@ -164,12 +164,12 @@ int BPF_KPROBE(tcp_cleanup_rbuf, struct sock* sk, int copied) {
     }
     __u64 pid_tgid = bpf_get_current_pid_tgid();
 	__u32 pid = pid_tgid >> 32;
-    log_debug("kprobe/tcp_cleanup_rbuf: pid_tgid:%d, copied:%d\n", pid_tgid, copied);
 
     struct aggregated_flow_tuple tuple = {};
 	read_aggr_flow_tuple_for_tcp(&tuple, sk, FLOW_UNKNOWN);
     update_message(&tuple, 0, copied);
 
+    log_debug("kprobe/tcp_cleanup_rbuf: copied:%d, lport:%u, tgid:%d\n", copied, tuple.lport, pid_tgid);
 	return 0;
 }
 
@@ -185,7 +185,7 @@ int BPF_KPROBE(inet_csk_listen_stop, struct sock* sk) {
     pb.port = lport;
     bpf_map_delete_elem(&tcp_port_binding, &pb);
 
-    log_debug("kprobe/inet_csk_listen_stop: lport: %u\n", t.port);
+    log_debug("kprobe/inet_csk_listen_stop: lport: %u\n", lport);
     return 0;
 }
 

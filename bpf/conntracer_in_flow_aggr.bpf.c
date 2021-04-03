@@ -48,7 +48,7 @@ insert_tcp_flows(struct flow_tuple* tuple, __u8 direction)
 			flow.lport = tuple->sport;
 			break;
 		default:
-			log_debug("unknown direction:%d pid:%u\n", direction, pid);
+			log_debug("unknown direction:%d pid:%u\n", direction, tuple->pid);
 			return;
 	}
 	flow.pid = tuple->pid;
