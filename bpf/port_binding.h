@@ -13,14 +13,16 @@
 #define AF_INET		2
 #define AF_INET6	10
 
-static __always_inline void update_port_binding(__u16 lport) {
+static __always_inline void
+update_port_binding(__u16 lport) {
 	struct port_binding_key key = {};
 	key.port = lport;
 	__u8 state = PORT_LISTENING;
 	bpf_map_update_elem(&tcp_port_binding, &key, &state, BPF_ANY);
 }
 
-static __always_inline int sys_enter_socket(int family, int type, __u64 tid) {
+static __always_inline int
+sys_enter_socket(int family, int type, __u64 tid) {
 	// detect if protocol is udp or not.
     if ((family & (AF_INET | AF_INET6)) > 0 && (type & SOCK_DGRAM) > 0) {
 		// pass
@@ -35,7 +37,8 @@ static __always_inline int sys_enter_socket(int family, int type, __u64 tid) {
     return 0;
 }
 
-static __always_inline int sys_exit_socket(int ret, __u64 tid) {
+static __always_inline int
+sys_exit_socket(int ret, __u64 tid) {
     __u8* is_udp = bpf_map_lookup_elem(&entering_udp_sockets, &tid);
 
     // socket(2) returns a file discriptor.
@@ -65,7 +68,8 @@ end:
 	return 0;
 }
 
-static __always_inline int sys_enter_bind(int fd, const struct sockaddr *addr, __u64 tid) {
+static __always_inline int
+sys_enter_bind(int fd, const struct sockaddr *addr, __u64 tid) {
 	if (!addr) {
         return 0;
     }
@@ -101,7 +105,8 @@ static __always_inline int sys_enter_bind(int fd, const struct sockaddr *addr, _
 	return 0;
 }
 
-static __always_inline int sys_exit_bind(int ret, __u64 tid) {
+static __always_inline int
+sys_exit_bind(int ret, __u64 tid) {
     if (ret != 0) {
         return 0;
     }

@@ -9,7 +9,8 @@
 #include "conntracer.h"
 #include "maps.h"
 
-static __always_inline __u16 read_sport(struct sock* sk) {
+static __always_inline __u16
+read_sport(struct sock* sk) {
     __u16 sport = 0;
     BPF_CORE_READ_INTO(&sport, sk, __sk_common.skc_num);
     if (sport == 0) {
@@ -19,25 +20,28 @@ static __always_inline __u16 read_sport(struct sock* sk) {
 	return bpf_ntohs(sport);
 }
 
-static __always_inline struct iphdr* get_iphdr(struct sk_buff *skb) {
+static __always_inline
+struct iphdr* get_iphdr(struct sk_buff *skb) {
 	return (struct iphdr *)(BPF_CORE_READ(skb, head)
 		+ BPF_CORE_READ(skb, network_header));
 }
 
-static __always_inline struct udphdr* get_udphdr(struct sk_buff *skb) {
+static __always_inline struct udphdr*
+get_udphdr(struct sk_buff *skb) {
 	return (struct udphdr *)(BPF_CORE_READ(skb, head)
 		+ BPF_CORE_READ(skb, transport_header));
 }
 
-static __always_inline __u16 read_dport(struct sock* sk) {
+static __always_inline __u16
+read_dport(struct sock* sk) {
     __u16 dport = 0;
     BPF_CORE_READ_INTO(&dport, sk, __sk_common.skc_dport);
 	// struct inet_sock has the inet_dport member, but it is the same as sk.__sk_common.skc_dport.
 	return bpf_ntohs(dport);
 }
 
-static __always_inline
-void read_flow_tuple_for_tcp(struct flow_tuple *tuple, struct sock *sk, pid_t pid) {
+static __always_inline void
+read_flow_tuple_for_tcp(struct flow_tuple *tuple, struct sock *sk, pid_t pid) {
 	BPF_CORE_READ_INTO(&tuple->saddr, sk, __sk_common.skc_rcv_saddr);
 	BPF_CORE_READ_INTO(&tuple->daddr, sk, __sk_common.skc_daddr);
 	tuple->sport = read_sport(sk);
@@ -46,8 +50,8 @@ void read_flow_tuple_for_tcp(struct flow_tuple *tuple, struct sock *sk, pid_t pi
 	tuple->l4_proto = IPPROTO_TCP;
 }
 
-static __always_inline
-void read_aggr_flow_tuple_for_tcp(struct aggregated_flow_tuple *tuple, struct sock *sk, flow_direction direction) {
+static __always_inline void
+read_aggr_flow_tuple_for_tcp(struct aggregated_flow_tuple *tuple, struct sock *sk, flow_direction direction) {
 	BPF_CORE_READ_INTO(&tuple->saddr, sk, __sk_common.skc_rcv_saddr);
 	BPF_CORE_READ_INTO(&tuple->daddr, sk, __sk_common.skc_daddr);
 	__u16 sport = read_sport(sk);
@@ -76,7 +80,8 @@ void read_aggr_flow_tuple_for_tcp(struct aggregated_flow_tuple *tuple, struct so
 	tuple->direction = direction;
 }
 
-static __always_inline void read_flow_for_udp_send(struct aggregated_flow_tuple *tuple, struct sk_buff *skb) {
+static __always_inline void
+read_flow_for_udp_send(struct aggregated_flow_tuple *tuple, struct sk_buff *skb) {
 	struct udphdr *udphdr = get_udphdr(skb);
 	struct iphdr *iphdr = get_iphdr(skb);
 
@@ -99,7 +104,8 @@ static __always_inline void read_flow_for_udp_send(struct aggregated_flow_tuple 
 	tuple->l4_proto = IPPROTO_UDP;
 }
 
-static __always_inline void read_flow_for_udp_recv(struct aggregated_flow_tuple *tuple, struct sock *sk, struct sk_buff *skb) {
+static __always_inline void
+read_flow_for_udp_recv(struct aggregated_flow_tuple *tuple, struct sock *sk, struct sk_buff *skb) {
 	struct udphdr *udphdr = (struct udphdr *)(BPF_CORE_READ(skb, head)
 		+ BPF_CORE_READ(skb,transport_header));
 	struct iphdr *iphdr = (struct iphdr *)(BPF_CORE_READ(skb, head)
@@ -125,8 +131,8 @@ static __always_inline void read_flow_for_udp_recv(struct aggregated_flow_tuple 
 	tuple->l4_proto = IPPROTO_UDP;
 }
 
-static __always_inline 
-void read_flow_tuple_for_udp_send(struct flow_tuple *tuple, 
+static __always_inline void
+read_flow_tuple_for_udp_send(struct flow_tuple *tuple, 
 	__u8 *direction, __u16 *lport, struct sk_buff *skb) {
 	struct udphdr *udphdr = (struct udphdr *)(BPF_CORE_READ(skb, head)
 		+ BPF_CORE_READ(skb,transport_header));
@@ -151,10 +157,9 @@ void read_flow_tuple_for_udp_send(struct flow_tuple *tuple,
 	tuple->l4_proto = IPPROTO_UDP;
 }
 
-static __always_inline
-void read_flow_tuple_for_udp_recv(struct flow_tuple *tuple, 
-	__u8 *direction, __u16 *lport, struct sock *sk, struct sk_buff *skb)
-{
+static __always_inline void
+read_flow_tuple_for_udp_recv(struct flow_tuple *tuple, 
+	__u8 *direction, __u16 *lport, struct sock *sk, struct sk_buff *skb) {
 	struct udphdr *udphdr = get_udphdr(skb);
 	struct iphdr *iphdr = get_iphdr(skb);
 

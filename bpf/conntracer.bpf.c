@@ -50,8 +50,7 @@ insert_tcp_flows(struct aggregated_flow_tuple *tuple, pid_t pid) {
 }
 
 static __always_inline void
-insert_udp_flows(pid_t pid, struct aggregated_flow_tuple* tuple)
-{
+insert_udp_flows(pid_t pid, struct aggregated_flow_tuple* tuple) {
 	struct aggregated_flow flow = {};
 
 	flow.saddr = tuple->saddr;
@@ -66,8 +65,7 @@ insert_udp_flows(pid_t pid, struct aggregated_flow_tuple* tuple)
 }
 
 static __always_inline void
-update_message(struct aggregated_flow_tuple* tuple, size_t sent_bytes, size_t recv_bytes)
-{
+update_message(struct aggregated_flow_tuple* tuple, size_t sent_bytes, size_t recv_bytes) {
 	struct aggregated_flow_stat *val, empty = {};
 
     __builtin_memset(&empty, 0, sizeof(struct aggregated_flow_stat));
@@ -86,8 +84,7 @@ update_message(struct aggregated_flow_tuple* tuple, size_t sent_bytes, size_t re
 }
 
 SEC("kprobe/tcp_v4_connect")
-int BPF_KPROBE(tcp_v4_connect, struct sock *sk)
-{
+int BPF_KPROBE(tcp_v4_connect, struct sock *sk) {
 	__u64 pid_tgid = bpf_get_current_pid_tgid();
 	__u32 pid = pid_tgid >> 32;
 	__u32 tid = pid_tgid;
@@ -99,8 +96,7 @@ int BPF_KPROBE(tcp_v4_connect, struct sock *sk)
 }
 
 SEC("kretprobe/tcp_v4_connect")
-int BPF_KRETPROBE(tcp_v4_connect_ret, int ret)
-{
+int BPF_KRETPROBE(tcp_v4_connect_ret, int ret) {
 	__u64 pid_tgid = bpf_get_current_pid_tgid();
 	__u32 pid = pid_tgid >> 32;
 	__u32 tid = pid_tgid;
@@ -127,8 +123,7 @@ end:
 }
 
 SEC("kretprobe/inet_csk_accept")
-int BPF_KRETPROBE(inet_csk_accept_ret, struct sock *sk)
-{
+int BPF_KRETPROBE(inet_csk_accept_ret, struct sock *sk) {
 	__u64 pid_tgid = bpf_get_current_pid_tgid();
 	__u32 pid = pid_tgid >> 32;
 
