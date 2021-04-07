@@ -1,13 +1,14 @@
 #ifndef __PORT_BINDING_H
 #define __PORT_BINDING_H
 
+#include "vmlinux.h"
+
 #include <bpf/bpf_core_read.h>
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_tracing.h>
 
 #include "conntracer.h"
 #include "maps.h"
-#include "vmlinux.h"
 
 #define AF_INET 2
 #define AF_INET6 10

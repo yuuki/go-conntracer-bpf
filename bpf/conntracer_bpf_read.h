@@ -1,12 +1,13 @@
 #ifndef __CONNTRACER_BPF_READ_H
 #define __CONNTRACER_BPF_READ_H
 
+#include "vmlinux.h"
+
 #include <bpf/bpf_core_read.h>
 #include <bpf/bpf_endian.h>
 
 #include "conntracer.h"
 #include "maps.h"
-#include "vmlinux.h"
 
 static __always_inline __u16 read_sport(struct sock *sk) {
     __u16 sport = 0;

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 // Copyright (c) 2020 Yuuki Tsubouchi
 
+#include "vmlinux.h"
+
 #include <bpf/bpf_core_read.h>
 #include <bpf/bpf_endian.h>
 #include <bpf/bpf_helpers.h>
@@ -10,7 +12,6 @@
 #include "conntracer_bpf_read.h"
 #include "maps.h"
 #include "port_binding.h"
-#include "vmlinux.h"
 
 char LICENSE[] SEC("license") = "Dual BSD/GPL";
 
