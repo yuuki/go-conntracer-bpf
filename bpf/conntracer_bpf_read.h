@@ -140,20 +140,20 @@ static __always_inline void read_flow_tuple_for_udp_send(
     struct iphdr *iphdr = (struct iphdr *)(BPF_CORE_READ(skb, head) +
                                            BPF_CORE_READ(skb, network_header));
 
-    __u16 sport = bpf_ntohs(BPF_CORE_READ(udphdr, source));
-    __u16 dport = bpf_ntohs(BPF_CORE_READ(udphdr, dest));
+    tuple->sport = bpf_ntohs(BPF_CORE_READ(udphdr, source));
+    tuple->dport = bpf_ntohs(BPF_CORE_READ(udphdr, dest));
 
-    __u8 *sstate = bpf_map_lookup_elem(&udp_port_binding, &sport);
+    __u8 *sstate = bpf_map_lookup_elem(&udp_port_binding, &tuple->sport);
     if (sstate) {
         BPF_CORE_READ_INTO(&tuple->saddr, iphdr, daddr);
         BPF_CORE_READ_INTO(&tuple->daddr, iphdr, saddr);
         *direction = FLOW_PASSIVE;
-        *lport = sport;
+        *lport = tuple->sport;
     } else {
         BPF_CORE_READ_INTO(&tuple->saddr, iphdr, saddr);
         BPF_CORE_READ_INTO(&tuple->daddr, iphdr, daddr);
         *direction = FLOW_ACTIVE;
-        *lport = dport;
+        *lport = tuple->dport;
     }
     tuple->l4_proto = IPPROTO_UDP;
 }
@@ -164,20 +164,20 @@ static __always_inline void read_flow_tuple_for_udp_recv(
     struct udphdr *udphdr = get_udphdr(skb);
     struct iphdr *iphdr = get_iphdr(skb);
 
-    __u16 sport = bpf_ntohs(BPF_CORE_READ(udphdr, source));
-    __u16 dport = bpf_ntohs(BPF_CORE_READ(udphdr, dest));
+    tuple->sport = bpf_ntohs(BPF_CORE_READ(udphdr, source));
+    tuple->dport = bpf_ntohs(BPF_CORE_READ(udphdr, dest));
 
-    __u8 *sstate = bpf_map_lookup_elem(&udp_port_binding, &dport);
+    __u8 *sstate = bpf_map_lookup_elem(&udp_port_binding, &tuple->dport);
     if (sstate) {
         tuple->saddr = BPF_CORE_READ(iphdr, saddr);
         tuple->daddr = BPF_CORE_READ(iphdr, daddr);
         *direction = FLOW_PASSIVE;
-        *lport = dport;
+        *lport = tuple->dport;
     } else {
         tuple->saddr = BPF_CORE_READ(iphdr, daddr);
         tuple->daddr = BPF_CORE_READ(iphdr, saddr);
         *direction = FLOW_ACTIVE;
-        *lport = sport;
+        *lport = tuple->sport;
     }
 
     tuple->l4_proto = IPPROTO_UDP;
