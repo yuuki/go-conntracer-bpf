@@ -252,7 +252,11 @@ func (t *Tracer) DumpFlows() ([]*Flow, error) {
 	stats := <-statChan
 	merged := make([]*Flow, 0, len(flows))
 	for t, flow := range flows {
-		flow.Stat = stats[t]
+		if v, ok := stats[t]; ok {
+			flow.Stat = v
+		} else {
+			flow.Stat = &AggrFlowStat{}
+		}
 		merged = append(merged, flow)
 	}
 	return merged, nil

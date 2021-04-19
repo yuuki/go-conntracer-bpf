@@ -121,7 +121,11 @@ func (t *TracerInFlowAggr) DumpFlows() ([]*SingleFlow, error) {
 	stats := <-statChan
 	merged := make([]*SingleFlow, 0, len(flows))
 	for t, flow := range flows {
-		flow.Stat = stats[t]
+		if v, ok := stats[t]; ok {
+			flow.Stat = v
+		} else {
+			flow.Stat = &SingleFlowStat{}
+		}
 		merged = append(merged, flow)
 	}
 	return merged, nil
